@@ -37,15 +37,16 @@ import java.util.logging.Logger;
  *   <li>We write the sign lines as translatable Adventure components
  *       (one translation key per line, up to 4 per sign = one "batch").</li>
  *   <li>We force-open the sign editor for the player via
- *       {@link Player#openSign(Sign, Side)}.</li>
- *   <li>When the player closes the editor (or after a configurable
- *       timeout) the client sends back a {@code SignChangeEvent} with
- *       the rendered text for each line.</li>
+ *       {@link Player#openSign(Sign, Side)}, then <em>immediately</em>
+ *       send a block-change to AIR at the sign location. This forces
+ *       the client to close the editor straight away and send back a
+ *       {@code SignChangeEvent} with the rendered text — no manual
+ *       player interaction required.</li>
  *   <li>We compare each line against the "vanilla responses" list from
  *       config.yml. Any text that is NOT in that list means the client
  *       resolved the translation key – indicating the mod is present.</li>
  *   <li>We restore the original block immediately after reading the
- *       result (or on timeout).</li>
+ *       result (or on timeout fallback).</li>
  * </ol>
  *
  * <p><b>Multiple batches:</b><br>
@@ -408,8 +409,19 @@ public final class SignTranslationCheck {
                 player.openSign(freshSign, side);
             }
 
-            // Schedule a timeout: if no SignChangeEvent fires within the window,
-            // restore the block and move to the next batch.
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Sign editor sent to " + player.getName()
+                        + " – force-closing immediately to capture translated response");
+            }
+
+            // Immediately force-close the sign editor so the client sends back
+            // the rendered (possibly translated) text right away, without waiting
+            // for the player to manually click Done.  Signs fire SignChangeEvent
+            // as soon as the editor closes, so this is instant.
+            forceCloseSignEditor(player, session);
+
+            // Schedule a short fallback timeout in case the client does not
+            // respond to the force-close (e.g. high-latency or non-standard clients).
             session.setTimeoutTask(
                     Bukkit.getScheduler().runTaskLater(plugin,
                             () -> onTimeout(player, session, resultSink),
@@ -448,9 +460,10 @@ public final class SignTranslationCheck {
                     + player.getName() + " batch=" + session.getCurrentBatchIndex());
         }
 
-        // Force-close the sign editor on the client by sending a block change
-        // to AIR at the sign location. This makes the client think the sign
-        // block was destroyed, which closes the editor immediately.
+        // The sign editor was already force-closed immediately after it was
+        // opened (see runBatch).  This second call is a safety-net for clients
+        // that may still have the editor open (e.g. if the first close was lost
+        // due to high latency).
         if (config.isCloseEditorOnTimeout() && player.isOnline()) {
             forceCloseSignEditor(player, session);
         }
@@ -488,10 +501,13 @@ public final class SignTranslationCheck {
     /**
      * Sends a block change to the player at the sign location, changing
      * it to AIR. This forces the client to close any open sign editor
-     * for that block location.
+     * for that block location and immediately send back a
+     * {@code SignChangeEvent} with the rendered (possibly translated)
+     * sign text.
      *
-     * <p>After a short delay, the real block state is re-sent so the
-     * player sees the correct world state.
+     * <p>Called right after {@link Player#openSign} so the check
+     * completes without requiring any manual player interaction.
+     * Also called as a safety-net from the timeout handler.
      */
     private void forceCloseSignEditor(Player player, SignCheckSession session) {
         Location signLoc = session.getSignLocation();
