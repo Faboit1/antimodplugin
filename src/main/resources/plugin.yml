@@ -1,0 +1,56 @@
+name: AntiModDetect
+version: '${project.version}'
+main: dev.antimod.AntiModDetect
+api-version: '1.21'
+description: "Detects cheat clients and suspicious mods invisibly using sign translation keys, brand strings and plugin channels"
+authors:
+  - AntiModDetect
+
+# ProtocolLib is optional – enables packet-level brand and channel detection.
+# Without it the plugin still works via the sign translation-key check.
+softdepend:
+  - ProtocolLib
+
+commands:
+  antimoddetect:
+    description: "AntiModDetect administration command"
+    usage: |
+      /<command> check <player>
+      /<command> whitelist <add|remove|list> [player]
+      /<command> strikes <player>
+      /<command> reload
+      /<command> status
+    aliases:
+      - amd
+      - antimod
+    permission: antimoddetect.admin
+
+permissions:
+  antimoddetect.admin:
+    description: "Full access to all AntiModDetect admin commands"
+    default: op
+    children:
+      antimoddetect.notify: true
+      antimoddetect.whitelist: true
+      antimoddetect.check: true
+      antimoddetect.reload: true
+
+  antimoddetect.notify:
+    description: "Receive in-game detection alerts"
+    default: op
+
+  antimoddetect.bypass:
+    description: "Bypass all AntiModDetect checks (staff / trusted players)"
+    default: false
+
+  antimoddetect.whitelist:
+    description: "Manage the bypass whitelist"
+    default: op
+
+  antimoddetect.check:
+    description: "Manually trigger detection checks on a player"
+    default: op
+
+  antimoddetect.reload:
+    description: "Reload the configuration"
+    default: op

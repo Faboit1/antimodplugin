@@ -1,0 +1,492 @@
+# ================================================================
+# AntiModDetect – Full Configuration
+# Version: 1.0.0  |  Minecraft: 1.21.x (Paper)
+# ================================================================
+#
+# DETECTION METHODS:
+#   1. SIGN_TRANSLATION  – Forces open a sign editor with Minecraft
+#      translation keys that only resolve inside specific mods.
+#      The client sends back the rendered text; we compare it to
+#      what a vanilla client would send (the raw key itself).
+#      Supports UNLIMITED keys – they are batched into groups of 4
+#      (one sign = 4 lines) and tested sequentially.
+#
+#   2. CLIENT_BRAND      – Reads the "minecraft:brand" plugin
+#      channel that every client sends immediately after login.
+#      Fabric, Forge and many hack clients expose their name here.
+#      Requires ProtocolLib for deep packet interception.
+#
+#   3. CHANNEL_REGISTER  – Some mods register mod-specific plugin
+#      channels (e.g. "meteor-client:main"). We capture the channel
+#      registration packet and compare against known signatures.
+#      Requires ProtocolLib.
+#
+# CONFIDENCE LEVELS:
+#   CONFIRMED  – Translation key / channel is exclusive to one mod.
+#                High accuracy, low false-positive risk.
+#   HEURISTIC  – Data is indicative but not exclusive (e.g. "fabric"
+#                brand could be an innocent Fabric modpack).
+#                Use alert-only actions for these.
+# ================================================================
+
+# ----------------------------------------------------------------
+# GENERAL
+# ----------------------------------------------------------------
+general:
+  # Extra console output for debugging detections.
+  debug: false
+
+  # Chat prefix prepended to all plugin messages.
+  prefix: "&8[&6AntiModDetect&8] "
+
+  # Players with this permission bypass every check.
+  bypass-permission: "antimoddetect.bypass"
+
+  # Ticks (20 = 1 s) to wait after join before starting checks.
+  # Increase if you use auth plugins (AuthMe, etc.) that teleport
+  # players after login.
+  join-check-delay-ticks: 60
+
+  # Ticks to wait for a sign response before timing out.
+  check-timeout-ticks: 100
+
+  # Ticks to wait between successive sign batches.
+  batch-delay-ticks: 20
+
+  # Ticks after a check completes before restoring the sign block.
+  block-restore-delay-ticks: 5
+
+  # Run the sign check asynchronously where possible.
+  async-scheduling: true
+
+  # Whether to check players who reconnect within this many seconds
+  # after a previous check (0 = always re-check).
+  recheck-cooldown-seconds: 300
+
+
+# ----------------------------------------------------------------
+# SIGN TRANSLATION-KEY DETECTION
+# ----------------------------------------------------------------
+sign-detection:
+  enabled: true
+
+  # AUTO  – finds the first air block above the player.
+  # FIXED – use the coordinates under fixed-location below.
+  placement-mode: "AUTO"
+
+  fixed-location:
+    world: "world"
+    x: 0
+    y: 100
+    z: 0
+
+  auto-placement:
+    # Blocks above the player's eye to start the search.
+    start-y-offset: 2
+    # How many additional blocks upward to scan for free space.
+    max-y-offset: 15
+    # Fallback Y offset if no free block is found in the scan range.
+    fallback-y-offset: 3
+
+  # Block material to temporarily place as the sign.
+  # Must be a sign material (OAK_SIGN, SPRUCE_SIGN, etc.)
+  sign-material: "OAK_SIGN"
+
+  # Whether to open the sign on the FRONT side (true) or BACK (false).
+  use-front-side: true
+
+  # ---------------------------------------------------------------
+  # TRANSLATION KEY LIST  (add as many as you like!)
+  # ---------------------------------------------------------------
+  # Each entry:
+  #   key            – the Minecraft i18n translation key to probe.
+  #   mod-name       – human-readable mod label used in alerts.
+  #   confidence     – CONFIRMED or HEURISTIC (see top of file).
+  #   vanilla-responses – exact strings a vanilla client sends back.
+  #                       Any response NOT in this list triggers
+  #                       a detection.  Always include the raw key
+  #                       itself AND an empty string.
+  #
+  # HOW IT WORKS:
+  #   Vanilla client: the key doesn't exist in its lang file, so it
+  #   renders the key string itself ("key.category.meteor-client…").
+  #   Modded client:  the key resolves to its translated value
+  #   ("Meteor Client"), which is NOT in vanilla-responses → flagged.
+  # ---------------------------------------------------------------
+  keys:
+
+    # ── Meteor Client ───────────────────────────────────────────
+    - key: "key.category.meteor-client.meteor-client"
+      mod-name: "Meteor Client"
+      confidence: CONFIRMED
+      vanilla-responses:
+        - "key.category.meteor-client.meteor-client"
+        - ""
+
+    # ── LiquidBounce / LiquidChat ────────────────────────────────
+    - key: "gui.liquidchat.title"
+      mod-name: "LiquidChat"
+      confidence: CONFIRMED
+      vanilla-responses:
+        - "gui.liquidchat.title"
+        - ""
+
+    # ── Freecam mod ─────────────────────────────────────────────
+    - key: "key.freecam.toggle"
+      mod-name: "Freecam"
+      confidence: CONFIRMED
+      vanilla-responses:
+        - "key.freecam.toggle"
+        - ""
+
+    # ── EMC (Earth-MC companion mod) ────────────────────────────
+    - key: "gui.emc.title"
+      mod-name: "EMC Companion"
+      confidence: CONFIRMED
+      vanilla-responses:
+        - "gui.emc.title"
+        - ""
+
+    # ── Wurst Client ────────────────────────────────────────────
+    - key: "key.wurst.zoom"
+      mod-name: "Wurst Client"
+      confidence: CONFIRMED
+      vanilla-responses:
+        - "key.wurst.zoom"
+        - ""
+
+    - key: "key.category.wurst"
+      mod-name: "Wurst Client"
+      confidence: CONFIRMED
+      vanilla-responses:
+        - "key.category.wurst"
+        - ""
+
+    # ── Xaero's Minimap (HEURISTIC – legit on many servers) ─────
+    - key: "key.xaero_minimap.zoom_in"
+      mod-name: "Xaero's Minimap"
+      confidence: HEURISTIC
+      vanilla-responses:
+        - "key.xaero_minimap.zoom_in"
+        - ""
+
+    # ── Xaero's World Map (HEURISTIC) ───────────────────────────
+    - key: "key.xaero_worldmap.open_map"
+      mod-name: "Xaero's World Map"
+      confidence: HEURISTIC
+      vanilla-responses:
+        - "key.xaero_worldmap.open_map"
+        - ""
+
+    # ── Add more keys below – there is NO upper limit ────────────
+    # - key: "key.your.custom.translation.key"
+    #   mod-name: "Your Mod Name"
+    #   confidence: CONFIRMED
+    #   vanilla-responses:
+    #     - "key.your.custom.translation.key"
+    #     - ""
+
+
+# ----------------------------------------------------------------
+# CLIENT BRAND DETECTION  (requires ProtocolLib)
+# ----------------------------------------------------------------
+# Automatically disabled if ProtocolLib is not installed.
+brand-detection:
+  enabled: true
+
+  # match-type options: CONTAINS  EQUALS  STARTS_WITH  ENDS_WITH  REGEX
+  # All comparisons are case-insensitive unless match-type is REGEX.
+  brands:
+
+    - brand: "fabric"
+      mod-name: "Fabric Client"
+      confidence: HEURISTIC
+      match-type: CONTAINS
+
+    - brand: "forge"
+      mod-name: "Forge Client"
+      confidence: HEURISTIC
+      match-type: CONTAINS
+
+    - brand: "neoforge"
+      mod-name: "NeoForge Client"
+      confidence: HEURISTIC
+      match-type: CONTAINS
+
+    - brand: "meteor"
+      mod-name: "Meteor Client"
+      confidence: CONFIRMED
+      match-type: CONTAINS
+
+    - brand: "wurst"
+      mod-name: "Wurst Client"
+      confidence: CONFIRMED
+      match-type: CONTAINS
+
+    - brand: "lcclient"
+      mod-name: "LiquidClient"
+      confidence: CONFIRMED
+      match-type: CONTAINS
+
+    - brand: "inertia"
+      mod-name: "Inertia Client"
+      confidence: CONFIRMED
+      match-type: CONTAINS
+
+    - brand: "future"
+      mod-name: "Future Client"
+      confidence: CONFIRMED
+      match-type: CONTAINS
+
+    - brand: "sigma"
+      mod-name: "Sigma Client"
+      confidence: CONFIRMED
+      match-type: CONTAINS
+
+    # Add more brand signatures below:
+    # - brand: "myclient"
+    #   mod-name: "My Hack Client"
+    #   confidence: CONFIRMED
+    #   match-type: EQUALS
+
+
+# ----------------------------------------------------------------
+# PLUGIN CHANNEL DETECTION  (requires ProtocolLib)
+# ----------------------------------------------------------------
+channel-detection:
+  enabled: true
+
+  channels:
+
+    - channel: "meteor-client:main"
+      mod-name: "Meteor Client"
+      confidence: CONFIRMED
+
+    - channel: "wurst:main"
+      mod-name: "Wurst Client"
+      confidence: CONFIRMED
+
+    - channel: "freecam:toggle"
+      mod-name: "Freecam"
+      confidence: CONFIRMED
+
+    - channel: "liquidchat:main"
+      mod-name: "LiquidChat"
+      confidence: CONFIRMED
+
+    # Add more channel signatures below:
+    # - channel: "mymod:channel"
+    #   mod-name: "My Mod"
+    #   confidence: CONFIRMED
+
+
+# ----------------------------------------------------------------
+# ACTIONS
+# ----------------------------------------------------------------
+# Configure what happens when each confidence level is triggered.
+# Both blocks are independent – you can kick for CONFIRMED and only
+# alert for HEURISTIC, for example.
+actions:
+
+  # ── Actions for CONFIRMED detections ─────────────────────────
+  confirmed:
+    alert-staff: true      # notify players with antimoddetect.notify
+    log-console: true      # print to server console
+    log-file: true         # append to detections.log
+
+    kick:
+      enabled: true
+      # Supports colour codes (&) and placeholders:
+      # {player}  {mod}  {check-type}  {confidence}  {uuid}
+      message: |-
+        &c&lUNAUTHORIZED MOD DETECTED
+        &r
+        &7You are using: &c{mod}
+        &7Please remove it and rejoin.
+        &r
+        &7If this is a mistake, contact staff.
+
+    ban:
+      enabled: false
+      duration: "14d"
+      reason: "Using unauthorized mod: {mod} — AntiModDetect"
+
+    run-commands:
+      enabled: false
+      # Commands run as CONSOLE.  Placeholders: {player} {mod} {uuid} {check-type} {confidence}
+      delay-ticks: 0
+      commands:
+        - "say {player} was detected using {mod}"
+
+  # ── Actions for HEURISTIC detections ──────────────────────────
+  heuristic:
+    alert-staff: true
+    log-console: true
+    log-file: true
+
+    kick:
+      enabled: false
+      message: |-
+        &e&lSUSPICIOUS CLIENT DETECTED
+        &r
+        &7Your client appears to be: &e{mod}
+        &7This may be a false positive.
+        &r
+        &7Contact staff if you believe this is wrong.
+
+    ban:
+      enabled: false
+      duration: "7d"
+      reason: "Suspicious client detected: {mod} — AntiModDetect"
+
+    run-commands:
+      enabled: false
+      delay-ticks: 0
+      commands: []
+
+  # Only fire the action once per player per session for the same
+  # mod+check combination (prevents spam from repeated checks).
+  deduplicate-per-session: true
+
+
+# ----------------------------------------------------------------
+# MESSAGES
+# ----------------------------------------------------------------
+# All staff/console messages. Supports & colour codes.
+# Placeholders available everywhere:
+#   {player}      – player name
+#   {uuid}        – player UUID
+#   {mod}         – detected mod name
+#   {check-type}  – SIGN_TRANSLATION | CLIENT_BRAND | CHANNEL_REGISTER
+#   {confidence}  – CONFIRMED | HEURISTIC
+#   {ip}          – player IP address
+#   {timestamp}   – formatted timestamp
+#   {count}       – number of detections / strikes
+#   {prefix}      – the general.prefix value
+messages:
+
+  # Sent to players with antimoddetect.notify permission.
+  staff-alert: "{prefix}&e{player} &7flagged &c{mod} &8(&7Check: &f{check-type}&8, &7Confidence: &6{confidence}&8)"
+
+  # Written to the server console.
+  console-log: "[AntiModDetect] DETECT | player={player} uuid={uuid} mod={mod} check={check-type} confidence={confidence}"
+
+  # Written to the log file (logging.file-path).
+  file-log: "[{timestamp}] player={player} uuid={uuid} ip={ip} mod={mod} check={check-type} confidence={confidence}"
+
+  # Command feedback messages
+  no-permission: "{prefix}&cYou do not have permission to do this."
+  reload-success: "{prefix}&aConfiguration reloaded successfully."
+  reload-failed: "{prefix}&cFailed to reload. Check console for errors."
+
+  check-started: "{prefix}&7Starting checks on &f{player}&7..."
+  check-complete: "{prefix}&aChecks complete for &f{player}&7. &e{count} &7detection(s) this session."
+  check-clean: "{prefix}&aNo mods detected for &f{player}&7."
+
+  whitelist-added: "{prefix}&aAdded &f{player} &ato the bypass whitelist."
+  whitelist-removed: "{prefix}&cRemoved &f{player} &cfrom the bypass whitelist."
+  whitelist-already-added: "{prefix}&e{player} &7is already on the whitelist."
+  whitelist-not-found: "{prefix}&e{player} &7is not on the whitelist."
+  whitelist-list-header: "&8----- &6Bypass Whitelist &8-----"
+  whitelist-list-entry: "  &7- &f{player} &8({uuid})"
+  whitelist-list-empty: "{prefix}&7The bypass whitelist is empty."
+
+  strikes-reset: "{prefix}&aStrikes reset for &f{player}&a."
+  strikes-display: "{prefix}&f{player} &7has &e{count} &7strike(s)."
+
+  player-not-found: "{prefix}&cPlayer &f{player} &cwas not found."
+  player-offline: "{prefix}&c{player} &cis not currently online."
+
+  protocollib-missing: "{prefix}&eBrand and channel detection disabled — install ProtocolLib for full coverage."
+  status-header: "&8----- &6AntiModDetect Status &8-----"
+  status-sign: "  &7Sign detection: {state}"
+  status-brand: "  &7Brand detection: {state} {note}"
+  status-channel: "  &7Channel detection: {state} {note}"
+  status-strikes: "  &7Strike system: {state}"
+  status-enabled: "&aENABLED"
+  status-disabled: "&cDISABLED"
+  status-protocollib-note: "&8(requires ProtocolLib)"
+
+
+# ----------------------------------------------------------------
+# STRIKE SYSTEM
+# ----------------------------------------------------------------
+strikes:
+  enabled: true
+
+  # How many detections before the threshold action triggers.
+  threshold: 3
+
+  # Whether to reset strike counts when the player disconnects.
+  reset-on-disconnect: false
+
+  # Action fired when the player hits the threshold.
+  threshold-action:
+    ban:
+      enabled: true
+      duration: "14d"
+      reason: "Multiple unauthorized mod detections ({count} strikes) — AntiModDetect"
+    kick:
+      enabled: false
+      message: |-
+        &c&lToo many mod detections.
+        &7You have been removed from the server.
+    run-commands:
+      enabled: false
+      delay-ticks: 0
+      commands: []
+
+
+# ----------------------------------------------------------------
+# LOGGING
+# ----------------------------------------------------------------
+logging:
+  # Path to the detection log file, relative to the plugin folder.
+  file-path: "detections.log"
+
+  # Max file size (MB) before rolling over (0 = unlimited).
+  max-size-mb: 10
+
+  # Java SimpleDateFormat pattern used in log entries.
+  timestamp-format: "yyyy-MM-dd HH:mm:ss"
+
+  # Whether to include the player's IP address in log entries.
+  log-ip: true
+
+  # Minimum confidence level to log:  HEURISTIC (log everything)
+  #                                   CONFIRMED  (log CONFIRMED only)
+  min-log-confidence: "HEURISTIC"
+
+
+# ----------------------------------------------------------------
+# WHITELIST  (persisted across reloads)
+# ----------------------------------------------------------------
+# Players listed here bypass all checks.
+# Managed at runtime with /amd whitelist add|remove|list.
+# You may also edit this list manually and /amd reload.
+whitelist:
+  # Format: "PlayerName" or "UUID"
+  players: []
+
+
+# ----------------------------------------------------------------
+# ADVANCED / INTERNAL
+# ----------------------------------------------------------------
+advanced:
+  # Maximum number of sign batches to run per player per join.
+  # 0 = no limit (run all batches for all configured keys).
+  max-batches-per-check: 0
+
+  # Suppress the sign editor open sound for the checked player
+  # (reduces suspicion on servers where players hear UI sounds).
+  # NOTE: requires ProtocolLib to suppress the sound packet.
+  suppress-sign-sound: false
+
+  # If true, the plugin will never place a block if the target
+  # location already contains a non-air, non-replaceable block.
+  # Prevents overwriting player structures in edge cases.
+  skip-if-block-occupied: false
+
+  # Log the raw sign lines received from each client to the
+  # console (debug only – very verbose).
+  log-raw-sign-lines: false
