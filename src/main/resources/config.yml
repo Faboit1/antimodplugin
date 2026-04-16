@@ -69,6 +69,21 @@ general:
   # after a previous check (0 = always re-check).
   recheck-cooldown-seconds: 300
 
+  # Players in these gamemodes are exempt from all checks.
+  # Values: SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR
+  exempt-gamemodes: []
+  # Example:
+  # exempt-gamemodes:
+  #   - CREATIVE
+  #   - SPECTATOR
+
+  # Players in these worlds are exempt from all checks.
+  exempt-worlds: []
+  # Example:
+  # exempt-worlds:
+  #   - "world_lobby"
+  #   - "hub"
+
 
 # ----------------------------------------------------------------
 # SIGN TRANSLATION-KEY DETECTION
@@ -100,6 +115,17 @@ sign-detection:
 
   # Whether to open the sign on the FRONT side (true) or BACK (false).
   use-front-side: true
+
+  # Ticks to wait between placing the sign and opening the editor.
+  # This delay ensures the sign data packet reaches the client before
+  # the editor opens, preventing the "blank/empty sign" issue.
+  # Increase to 3-5 if players on high-latency connections see empty signs.
+  editor-open-delay-ticks: 2
+
+  # When a sign check times out (no client response), force-close the
+  # sign editor on the player's screen by sending a block change.
+  # Set to false only for debugging.
+  close-editor-on-timeout: true
 
   # ---------------------------------------------------------------
   # TRANSLATION KEY LIST  (add as many as you like!)
@@ -324,6 +350,12 @@ actions:
       commands:
         - "say {player} was detected using {mod}"
 
+    # Send a message to the checked player when detected.
+    # Only fires if the player is not immediately kicked/banned.
+    notify-player:
+      enabled: false
+      message: "{prefix}&cA modification was detected on your client: &e{mod}&c. Please remove it."
+
   # ── Actions for HEURISTIC detections ──────────────────────────
   heuristic:
     alert-staff: true
@@ -349,6 +381,11 @@ actions:
       enabled: false
       delay-ticks: 0
       commands: []
+
+    # Send a message to the checked player when detected.
+    notify-player:
+      enabled: false
+      message: "{prefix}&eYour client may be flagged: &f{mod}&e. Contact staff if this is wrong."
 
   # Only fire the action once per player per session for the same
   # mod+check combination (prevents spam from repeated checks).
@@ -497,3 +534,9 @@ advanced:
   # Log the raw sign lines received from each client to the
   # console (debug only – very verbose).
   log-raw-sign-lines: false
+
+  # If true, prevents two checks from running concurrently on the
+  # same player. A new check request will clean up the existing
+  # session before starting (preventing duplicate sign editors).
+  # Generally should remain true.
+  concurrent-check-prevention: true

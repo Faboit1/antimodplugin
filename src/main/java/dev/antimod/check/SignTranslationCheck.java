@@ -108,6 +108,15 @@ public final class SignTranslationCheck {
         List<ConfigManager.TranslationKeyEntry> keys = config.getTranslationKeys();
         if (keys.isEmpty()) return;
 
+        // Prevent duplicate/concurrent sessions – clean up any in-progress check
+        if (sessions.containsKey(player.getUniqueId())) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Cleaning up existing sign session for "
+                        + player.getName() + " before starting new check");
+            }
+            cleanupSession(player.getUniqueId());
+        }
+
         // Cap batches if configured
         int maxBatches = config.getMaxBatchesPerCheck();
         if (maxBatches > 0) {
@@ -204,6 +213,10 @@ public final class SignTranslationCheck {
                             cleanupSession(session.getPlayerUuid());
                             return;
                         }
+                        // Verify this session is still the active one
+                        SignCheckSession currentSession = sessions.get(session.getPlayerUuid());
+                        if (currentSession != session) return;
+
                         runBatch(p, session, resultSink);
                     },
                     config.getBatchDelayTicks());
@@ -229,12 +242,20 @@ public final class SignTranslationCheck {
 
     /**
      * Cleans up the session for a player (e.g. on disconnect or plugin
-     * disable). Restores the sign block immediately.
+     * disable). Restores the sign block immediately and force-closes the
+     * sign editor if the player is online.
      */
     public void cleanupSession(UUID playerUuid) {
         SignCheckSession session = sessions.remove(playerUuid);
         if (session != null) {
             session.cancelTimeout();
+
+            // Force-close the editor for online players
+            Player player = Bukkit.getPlayer(playerUuid);
+            if (player != null && player.isOnline()) {
+                forceCloseSignEditor(player, session);
+            }
+
             restoreBlock(session);
         }
     }
@@ -356,19 +377,37 @@ public final class SignTranslationCheck {
                     .toList());
         }
 
-        // Open the sign editor for the player
-        // Paper API: Player#openSign(Sign, Side) forces the editor open
-        BlockState freshState = targetBlock.getState();
-        if (freshState instanceof Sign freshSign) {
-            player.openSign(freshSign, side);
-        }
+        // Delay between placing/updating the sign and opening the editor.
+        // This ensures the sign data packet reaches the client before the
+        // open-editor packet, preventing the "empty sign" issue.
+        int openDelay = config.getEditorOpenDelayTicks();
 
-        // Schedule a timeout: if no SignChangeEvent fires within the window,
-        // restore the block and move to the next batch.
-        session.setTimeoutTask(
-                Bukkit.getScheduler().runTaskLater(plugin,
-                        () -> onTimeout(player, session, resultSink),
-                        config.getCheckTimeoutTicks()));
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            // Validate the session is still active and the player is online
+            if (!player.isOnline()) {
+                cleanupSession(player.getUniqueId());
+                return;
+            }
+            SignCheckSession currentSession = sessions.get(player.getUniqueId());
+            if (currentSession != session) {
+                // Session was replaced or removed – don't open the editor
+                return;
+            }
+
+            // Open the sign editor for the player
+            // Paper API: Player#openSign(Sign, Side) forces the editor open
+            BlockState freshState = targetBlock.getState();
+            if (freshState instanceof Sign freshSign) {
+                player.openSign(freshSign, side);
+            }
+
+            // Schedule a timeout: if no SignChangeEvent fires within the window,
+            // restore the block and move to the next batch.
+            session.setTimeoutTask(
+                    Bukkit.getScheduler().runTaskLater(plugin,
+                            () -> onTimeout(player, session, resultSink),
+                            config.getCheckTimeoutTicks()));
+        }, openDelay);
     }
 
     /**
@@ -387,10 +426,29 @@ public final class SignTranslationCheck {
     private void onTimeout(Player player,
                            SignCheckSession session,
                            Consumer<DetectionResult> resultSink) {
+        // Verify this session is still the active one for this player.
+        // If it was replaced (e.g. by a forcecheck), don't act on the stale session.
+        SignCheckSession currentSession = sessions.get(player.getUniqueId());
+        if (currentSession != session) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Timeout fired for stale session of "
+                        + player.getName() + " – ignoring");
+            }
+            return;
+        }
+
         if (config.isDebug()) {
             log.info("[AMD-DEBUG] Sign check timed out for "
                     + player.getName() + " batch=" + session.getCurrentBatchIndex());
         }
+
+        // Force-close the sign editor on the client by sending a block change
+        // to AIR at the sign location. This makes the client think the sign
+        // block was destroyed, which closes the editor immediately.
+        if (config.isCloseEditorOnTimeout() && player.isOnline()) {
+            forceCloseSignEditor(player, session);
+        }
+
         restoreBlock(session);
 
         if (!player.isOnline()) {
@@ -400,12 +458,45 @@ public final class SignTranslationCheck {
 
         boolean hasMore = session.advanceBatch();
         if (hasMore) {
-            Bukkit.getScheduler().runTaskLater(plugin,
-                    () -> runBatch(player, session, resultSink),
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!player.isOnline()) {
+                            cleanupSession(player.getUniqueId());
+                            return;
+                        }
+                        // Verify this session is still the active one
+                        SignCheckSession cur = sessions.get(player.getUniqueId());
+                        if (cur != session) return;
+
+                        runBatch(player, session, resultSink);
+                    },
                     config.getBatchDelayTicks());
         } else {
             session.markCompleted();
             sessions.remove(player.getUniqueId());
+        }
+    }
+
+    // ====================================================================
+    //  Sign editor close helper
+    // ====================================================================
+
+    /**
+     * Sends a block change to the player at the sign location, changing
+     * it to AIR. This forces the client to close any open sign editor
+     * for that block location.
+     *
+     * <p>After a short delay, the real block state is re-sent so the
+     * player sees the correct world state.
+     */
+    private void forceCloseSignEditor(Player player, SignCheckSession session) {
+        Location signLoc = session.getSignLocation();
+        if (signLoc == null || !player.isOnline()) return;
+
+        // Send AIR to force the client to close the sign editor
+        player.sendBlockChange(signLoc, Material.AIR.createBlockData());
+
+        if (config.isDebug()) {
+            log.info("[AMD-DEBUG] Force-closed sign editor for " + player.getName());
         }
     }
 

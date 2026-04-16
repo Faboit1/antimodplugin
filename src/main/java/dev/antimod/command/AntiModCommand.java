@@ -106,9 +106,10 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
         send(sender, config.getMessage("check-started")
                 .replace("{player}", target.getName()));
 
-        // Clear cooldown so a manual check always runs
+        // Clear cooldown and clean up any existing sign session so we don't
+        // get duplicate sign editors
         joinListener.clearCooldown(target.getUniqueId());
-        joinListener.triggerChecks(target);
+        joinListener.forceCheckPlayer(target);
         return true;
     }
 

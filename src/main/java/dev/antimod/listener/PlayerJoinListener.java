@@ -76,24 +76,7 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
             return;
         }
 
-        // Check bypass permission
-        if (player.hasPermission(config.getBypassPermission())) {
-            if (config.isDebug()) {
-                log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
-                        + " (has bypass permission).");
-            }
-            return;
-        }
-
-        // Check whitelist (by name and UUID)
-        if (config.isWhitelisted(player.getName())
-                || config.isWhitelisted(player.getUniqueId().toString())) {
-            if (config.isDebug()) {
-                log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
-                        + " (whitelisted).");
-            }
-            return;
-        }
+        if (isExempt(player)) return;
 
         // Enforce recheck cooldown
         long now = System.currentTimeMillis();
@@ -178,9 +161,7 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
         if (player == null || !player.isOnline()) return;
-        if (player.hasPermission(config.getBypassPermission())) return;
-        if (config.isWhitelisted(player.getName())
-                || config.isWhitelisted(player.getUniqueId().toString())) return;
+        if (isExempt(player)) return;
 
         String ip = player.getAddress() != null
                 ? player.getAddress().getAddress().getHostAddress()
@@ -228,6 +209,53 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
     /** Routes a detection result to the detection manager. */
     private void handleDetection(DetectionResult result) {
         detectionManager.handle(result);
+    }
+
+    /**
+     * Checks whether a player is exempt from detection checks.
+     * Evaluates bypass permission, whitelist, exempt gamemodes, and exempt worlds.
+     *
+     * @return true if the player should be skipped
+     */
+    private boolean isExempt(Player player) {
+        // Check bypass permission
+        if (player.hasPermission(config.getBypassPermission())) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
+                        + " (has bypass permission).");
+            }
+            return true;
+        }
+
+        // Check whitelist (by name and UUID)
+        if (config.isWhitelisted(player.getName())
+                || config.isWhitelisted(player.getUniqueId().toString())) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
+                        + " (whitelisted).");
+            }
+            return true;
+        }
+
+        // Check exempt gamemodes
+        if (config.getExemptGamemodes().contains(player.getGameMode().name())) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
+                        + " (exempt gamemode: " + player.getGameMode() + ").");
+            }
+            return true;
+        }
+
+        // Check exempt worlds
+        if (config.getExemptWorlds().contains(player.getWorld().getName())) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
+                        + " (exempt world: " + player.getWorld().getName() + ").");
+            }
+            return true;
+        }
+
+        return false;
     }
 
     /** Returns the last-check timestamp map (for manual checks). */

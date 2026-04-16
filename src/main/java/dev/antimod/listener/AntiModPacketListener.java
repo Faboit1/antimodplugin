@@ -84,6 +84,8 @@ public final class AntiModPacketListener {
         if (player.hasPermission(config.getBypassPermission())) return;
         if (config.isWhitelisted(player.getName())
                 || config.isWhitelisted(player.getUniqueId().toString())) return;
+        if (config.getExemptGamemodes().contains(player.getGameMode().name())) return;
+        if (config.getExemptWorlds().contains(player.getWorld().getName())) return;
 
         PacketContainer packet = event.getPacket();
         String ip = player.getAddress() != null
