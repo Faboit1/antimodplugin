@@ -1,0 +1,86 @@
+name: Build AntiModDetect
+
+# Triggers: every push to any branch, every PR, and tags of the form v*.*.*
+on:
+  push:
+    branches: [ "**" ]
+    tags:     [ "v*.*.*" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  # =========================================================================
+  # BUILD
+  # =========================================================================
+  build:
+    name: Build (Java 21, Paper 1.21.x)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          # Cache the local Maven repository between runs to speed up builds
+          cache: 'maven'
+
+      # ProtocolLib is a provided (compile-only) dependency.  It is hosted on
+      # the dmulloy2 repo which is declared in pom.xml, so Maven fetches it
+      # automatically – no extra step required.
+      - name: Build with Maven
+        run: mvn clean package -B --no-transfer-progress
+
+      - name: Upload built JAR as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AntiModDetect-${{ github.sha }}
+          # The shade plugin produces a single fat JAR; the second pattern
+          # excludes the intermediate "original-*.jar" that shade also emits.
+          path: |
+            target/AntiModDetect-*.jar
+            !target/original-*.jar
+          retention-days: 30
+
+  # =========================================================================
+  # RELEASE  (only on v*.*.* tags)
+  # =========================================================================
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    # Allow the workflow to create and upload releases
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build with Maven (release)
+        run: mvn clean package -B --no-transfer-progress
+
+      - name: Create GitHub Release and upload JAR
+        uses: softprops/action-gh-release@v2
+        with:
+          # Attach the fat JAR, exclude Maven's intermediate original-*.jar
+          files: |
+            target/AntiModDetect-*.jar
+            !target/original-*.jar
+          # Auto-generate release notes from commits since the last tag
+          generate_release_notes: true
+          # Mark as a pre-release when the tag contains "-" (e.g. v1.0.0-beta.1)
+          prerelease: ${{ contains(github.ref_name, '-') }}
