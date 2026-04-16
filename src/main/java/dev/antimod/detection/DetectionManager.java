@@ -80,6 +80,19 @@ public final class DetectionManager {
         // 1. Dispatch alerts / logs
         alertManager.dispatch(result, action.alertStaff(), action.logConsole(), action.logFile());
 
+        // 1b. Notify the checked player (if configured)
+        if (action.notifyPlayer()) {
+            Player player = Bukkit.getPlayer(result.getPlayerUuid());
+            if (player != null && player.isOnline()
+                    && action.notifyPlayerMessage() != null
+                    && !action.notifyPlayerMessage().isBlank()) {
+                String msg = applyPlaceholders(action.notifyPlayerMessage(), result, 0);
+                Component notifyMsg = LegacyComponentSerializer.legacyAmpersand()
+                        .deserialize(msg);
+                player.sendMessage(notifyMsg);
+            }
+        }
+
         // 2. Strike system
         int strikes = 0;
         if (config.isStrikesEnabled()) {

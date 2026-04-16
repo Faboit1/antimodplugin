@@ -67,7 +67,9 @@ public final class ConfigManager {
             String banReason,
             boolean runCommandsEnabled,
             int commandDelayTicks,
-            List<String> commands) {}
+            List<String> commands,
+            boolean notifyPlayer,
+            String notifyPlayerMessage) {}
 
     // ── Strike threshold action ──────────────────────────────────────────
     public record StrikeThresholdAction(
@@ -130,6 +132,8 @@ public final class ConfigManager {
     private int signFallbackYOffset;
     private String signFixedWorld;
     private int signFixedX, signFixedY, signFixedZ;
+    private int editorOpenDelayTicks;
+    private boolean closeEditorOnTimeout;
 
     // Brand / channel detection
     private boolean brandDetectionEnabled;
@@ -138,6 +142,10 @@ public final class ConfigManager {
     // Whitelist
     private final Set<String> whitelist = new HashSet<>();
 
+    // Exemptions
+    private Set<String> exemptGamemodes = new HashSet<>();
+    private Set<String> exemptWorlds = new HashSet<>();
+
     // Deduplication
     private boolean deduplicatePerSession;
 
@@ -145,6 +153,7 @@ public final class ConfigManager {
     private int maxBatchesPerCheck;
     private boolean skipIfBlockOccupied;
     private boolean logRawSignLines;
+    private boolean concurrentCheckPrevention;
 
     // Messages (raw strings with placeholders)
     private Map<String, String> messages = new HashMap<>();
@@ -179,10 +188,12 @@ public final class ConfigManager {
         // ── Sign detection ───────────────────────────────────────────────
         ConfigurationSection sd = cfg.getConfigurationSection("sign-detection");
         if (sd != null) {
-            signDetectionEnabled = sd.getBoolean("enabled", true);
-            signPlacementMode    = sd.getString("placement-mode", "AUTO").toUpperCase(Locale.ROOT);
-            signMaterial         = sd.getString("sign-material", "OAK_SIGN").toUpperCase(Locale.ROOT);
-            signUseFrontSide     = sd.getBoolean("use-front-side", true);
+            signDetectionEnabled    = sd.getBoolean("enabled", true);
+            signPlacementMode       = sd.getString("placement-mode", "AUTO").toUpperCase(Locale.ROOT);
+            signMaterial            = sd.getString("sign-material", "OAK_SIGN").toUpperCase(Locale.ROOT);
+            signUseFrontSide        = sd.getBoolean("use-front-side", true);
+            editorOpenDelayTicks    = sd.getInt("editor-open-delay-ticks", 2);
+            closeEditorOnTimeout    = sd.getBoolean("close-editor-on-timeout", true);
 
             ConfigurationSection auto = sd.getConfigurationSection("auto-placement");
             if (auto != null) {
@@ -202,6 +213,8 @@ public final class ConfigManager {
             }
         } else {
             signDetectionEnabled = true;
+            editorOpenDelayTicks = 2;
+            closeEditorOnTimeout = true;
         }
 
         // Parse translation key list
@@ -242,6 +255,20 @@ public final class ConfigManager {
             }
         }
 
+        // ── Exemptions ──────────────────────────────────────────────────
+        exemptGamemodes = new HashSet<>();
+        for (String gm : cfg.getStringList("general.exempt-gamemodes")) {
+            if (gm != null && !gm.isBlank()) {
+                exemptGamemodes.add(gm.trim().toUpperCase(Locale.ROOT));
+            }
+        }
+        exemptWorlds = new HashSet<>();
+        for (String w : cfg.getStringList("general.exempt-worlds")) {
+            if (w != null && !w.isBlank()) {
+                exemptWorlds.add(w.trim());
+            }
+        }
+
         // ── Messages ─────────────────────────────────────────────────────
         messages = new HashMap<>();
         ConfigurationSection msgSec = cfg.getConfigurationSection("messages");
@@ -252,9 +279,10 @@ public final class ConfigManager {
         }
 
         // ── Advanced ─────────────────────────────────────────────────────
-        maxBatchesPerCheck   = cfg.getInt("advanced.max-batches-per-check", 0);
-        skipIfBlockOccupied  = cfg.getBoolean("advanced.skip-if-block-occupied", false);
-        logRawSignLines      = cfg.getBoolean("advanced.log-raw-sign-lines", false);
+        maxBatchesPerCheck        = cfg.getInt("advanced.max-batches-per-check", 0);
+        skipIfBlockOccupied       = cfg.getBoolean("advanced.skip-if-block-occupied", false);
+        logRawSignLines           = cfg.getBoolean("advanced.log-raw-sign-lines", false);
+        concurrentCheckPrevention = cfg.getBoolean("advanced.concurrent-check-prevention", true);
     }
 
     // ====================================================================
@@ -332,9 +360,11 @@ public final class ConfigManager {
         boolean runCmds      = cfg.getBoolean(basePath + ".run-commands.enabled", false);
         int cmdDelay         = cfg.getInt(basePath + ".run-commands.delay-ticks", 0);
         List<String> cmds    = cfg.getStringList(basePath + ".run-commands.commands");
+        boolean notifyPlayer = cfg.getBoolean(basePath + ".notify-player.enabled", false);
+        String notifyMsg     = cfg.getString(basePath + ".notify-player.message", "");
         return new ActionConfig(alertStaff, logConsole, logFile,
                 kickEnabled, kickMsg, banEnabled, banDuration, banReason,
-                runCmds, cmdDelay, cmds);
+                runCmds, cmdDelay, cmds, notifyPlayer, notifyMsg);
     }
 
     private StrikeThresholdAction parseStrikeThresholdAction(FileConfiguration cfg) {
@@ -440,6 +470,8 @@ public final class ConfigManager {
     public int getSignFixedX()                              { return signFixedX; }
     public int getSignFixedY()                              { return signFixedY; }
     public int getSignFixedZ()                              { return signFixedZ; }
+    public int getEditorOpenDelayTicks()                    { return editorOpenDelayTicks; }
+    public boolean isCloseEditorOnTimeout()                 { return closeEditorOnTimeout; }
 
     public List<TranslationKeyEntry> getTranslationKeys()   { return Collections.unmodifiableList(translationKeys); }
 
@@ -466,4 +498,8 @@ public final class ConfigManager {
     public int getMaxBatchesPerCheck()                      { return maxBatchesPerCheck; }
     public boolean isSkipIfBlockOccupied()                  { return skipIfBlockOccupied; }
     public boolean isLogRawSignLines()                      { return logRawSignLines; }
+    public boolean isConcurrentCheckPrevention()            { return concurrentCheckPrevention; }
+
+    public Set<String> getExemptGamemodes()                 { return Collections.unmodifiableSet(exemptGamemodes); }
+    public Set<String> getExemptWorlds()                    { return Collections.unmodifiableSet(exemptWorlds); }
 }
