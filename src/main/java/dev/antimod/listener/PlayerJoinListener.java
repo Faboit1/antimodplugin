@@ -67,6 +67,15 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
+        // Honour the check-on-join config toggle
+        if (!config.isCheckOnJoin()) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] check-on-join is disabled; skipping auto-check for "
+                        + player.getName());
+            }
+            return;
+        }
+
         // Check bypass permission
         if (player.hasPermission(config.getBypassPermission())) {
             if (config.isDebug()) {
@@ -224,5 +233,32 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
     /** Returns the last-check timestamp map (for manual checks). */
     public void clearCooldown(UUID playerId) {
         lastCheckTime.remove(playerId);
+    }
+
+    /**
+     * Force-checks a player: clears the recheck cooldown, cleans up any
+     * existing sign session, and immediately schedules all checks.
+     *
+     * <p>Unlike {@link #triggerChecks(Player)}, this bypasses both the
+     * cooldown guard and the {@code check-on-join} flag, so it works even
+     * when auto-checking is disabled.
+     */
+    public void forceCheckPlayer(Player player) {
+        UUID uuid = player.getUniqueId();
+        // Clear cooldown so the check always runs
+        lastCheckTime.remove(uuid);
+        // Abort any in-progress sign check session for this player to avoid
+        // duplicate signs or state confusion
+        signCheck.cleanupSession(uuid);
+
+        if (config.isDebug()) {
+            log.info("[AMD-DEBUG] Force-checking " + player.getName());
+        }
+
+        // Schedule checks on the next tick so callers can log first
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) return;
+            triggerChecks(player);
+        }, 1L);
     }
 }

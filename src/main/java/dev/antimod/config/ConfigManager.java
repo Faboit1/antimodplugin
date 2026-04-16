@@ -113,6 +113,7 @@ public final class ConfigManager {
     private boolean debug;
     private String prefix;
     private String bypassPermission;
+    private boolean checkOnJoin;
     private int joinCheckDelayTicks;
     private int checkTimeoutTicks;
     private int batchDelayTicks;
@@ -168,6 +169,7 @@ public final class ConfigManager {
         debug                   = cfg.getBoolean("general.debug", false);
         prefix                  = cfg.getString("general.prefix", "&8[&6AntiModDetect&8] ");
         bypassPermission        = cfg.getString("general.bypass-permission", "antimoddetect.bypass");
+        checkOnJoin             = cfg.getBoolean("general.check-on-join", true);
         joinCheckDelayTicks     = cfg.getInt("general.join-check-delay-ticks", 60);
         checkTimeoutTicks       = cfg.getInt("general.check-timeout-ticks", 100);
         batchDelayTicks         = cfg.getInt("general.batch-delay-ticks", 20);
@@ -420,6 +422,7 @@ public final class ConfigManager {
     public boolean isDebug()                                { return debug; }
     public String getPrefix()                               { return prefix; }
     public String getBypassPermission()                     { return bypassPermission; }
+    public boolean isCheckOnJoin()                          { return checkOnJoin; }
     public int getJoinCheckDelayTicks()                     { return joinCheckDelayTicks; }
     public int getCheckTimeoutTicks()                       { return checkTimeoutTicks; }
     public int getBatchDelayTicks()                         { return batchDelayTicks; }

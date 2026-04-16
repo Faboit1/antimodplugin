@@ -74,6 +74,7 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
 
         return switch (args[0].toLowerCase(Locale.ROOT)) {
             case "check"     -> cmdCheck(sender, args);
+            case "forcecheck", "fc" -> cmdForceCheck(sender, args);
             case "whitelist", "wl" -> cmdWhitelist(sender, args);
             case "strikes"   -> cmdStrikes(sender, args);
             case "reload"    -> cmdReload(sender);
@@ -108,6 +109,34 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
         // Clear cooldown so a manual check always runs
         joinListener.clearCooldown(target.getUniqueId());
         joinListener.triggerChecks(target);
+        return true;
+    }
+
+    /**
+     * {@code /amd forcecheck <player>} – identical to {@code check} but also
+     * clears any in-progress sign session and ignores the check-on-join flag,
+     * making it always fire regardless of config.
+     */
+    private boolean cmdForceCheck(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("antimoddetect.check")) {
+            send(sender, config.getMessage("no-permission"));
+            return true;
+        }
+        if (args.length < 2) {
+            send(sender, "&cUsage: /amd forcecheck <player>");
+            return true;
+        }
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            send(sender, config.getMessage("player-offline")
+                    .replace("{player}", args[1]));
+            return true;
+        }
+
+        send(sender, config.getMessage("forcecheck-started")
+                .replace("{player}", target.getName()));
+
+        joinListener.forceCheckPlayer(target);
         return true;
     }
 
@@ -263,7 +292,8 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
 
     private void sendHelp(CommandSender sender, String label) {
         send(sender, "&8&m              &r &6AntiModDetect &8&m              ");
-        send(sender, "&e/" + label + " check <player>");
+        send(sender, "&e/" + label + " check <player>         &7– run checks (respects cooldown)");
+        send(sender, "&e/" + label + " forcecheck <player>    &7– force-run all checks immediately");
         send(sender, "&e/" + label + " whitelist <add|remove|list> [player]");
         send(sender, "&e/" + label + " strikes <player>");
         send(sender, "&e/" + label + " strikes reset <player>");
@@ -282,11 +312,11 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
         if (!sender.hasPermission("antimoddetect.admin")) return List.of();
 
         if (args.length == 1) {
-            return filter(List.of("check", "whitelist", "strikes", "reload", "status"), args[0]);
+            return filter(List.of("check", "forcecheck", "whitelist", "strikes", "reload", "status"), args[0]);
         }
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "check", "strikes" ->
+                case "check", "forcecheck", "fc", "strikes" ->
                         Bukkit.getOnlinePlayers().stream()
                                 .map(Player::getName)
                                 .filter(n -> n.toLowerCase().startsWith(args[1].toLowerCase()))

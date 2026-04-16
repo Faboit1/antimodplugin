@@ -110,8 +110,11 @@ public final class DetectionManager {
         // 5. Custom commands
         if (action.runCommandsEnabled() && !action.commands().isEmpty()) {
             int delay = Math.max(0, action.commandDelayTicks());
+            // strikes is not effectively final after the conditional assignment above,
+            // so capture it in an immutable snapshot for use inside the lambda.
+            final int strikesSnapshot = strikes;
             Bukkit.getScheduler().runTaskLater(plugin, () ->
-                    runCommands(action.commands(), result, strikes), delay);
+                    runCommands(action.commands(), result, strikesSnapshot), delay);
         }
     }
 

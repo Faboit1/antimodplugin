@@ -42,6 +42,12 @@ general:
   # Players with this permission bypass every check.
   bypass-permission: "antimoddetect.bypass"
 
+  # Whether to automatically run ALL checks (sign translation, brand, channel)
+  # when a player joins the server.  Set to false to disable auto-checking on
+  # join entirely – staff can still trigger checks manually with /amd check or
+  # /amd forcecheck.
+  check-on-join: true
+
   # Ticks (20 = 1 s) to wait after join before starting checks.
   # Increase if you use auth plugins (AuthMe, etc.) that teleport
   # players after login.
@@ -382,6 +388,7 @@ messages:
   check-started: "{prefix}&7Starting checks on &f{player}&7..."
   check-complete: "{prefix}&aChecks complete for &f{player}&7. &e{count} &7detection(s) this session."
   check-clean: "{prefix}&aNo mods detected for &f{player}&7."
+  forcecheck-started: "{prefix}&cForce-checking &f{player}&c (bypassing cooldown and clearing active session)..."
 
   whitelist-added: "{prefix}&aAdded &f{player} &ato the bypass whitelist."
   whitelist-removed: "{prefix}&cRemoved &f{player} &cfrom the bypass whitelist."

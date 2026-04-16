@@ -145,7 +145,7 @@ public final class AntiModPacketListener {
      * {@code MinecraftKey} object in field index 0. We use
      * {@link StructureModifier} to read it safely.
      */
-    private static String readChannelName(PacketContainer packet) {
+    private String readChannelName(PacketContainer packet) {
         try {
             // Try MinecraftKey modifier first (ProtocolLib 5.x+)
             var keys = packet.getMinecraftKeys();
@@ -178,7 +178,7 @@ public final class AntiModPacketListener {
      * {@code ByteBuf} wrapper depending on version. We try the byte-array
      * modifier first, then fall back to a ByteBuf drain.
      */
-    private static byte[] readPayloadBytes(PacketContainer packet) {
+    private byte[] readPayloadBytes(PacketContainer packet) {
         try {
             var byteArrays = packet.getByteArrays();
             if (byteArrays.size() > 0) {
