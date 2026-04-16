@@ -109,7 +109,7 @@ public final class SignTranslationCheck {
         if (keys.isEmpty()) return;
 
         // Prevent duplicate/concurrent sessions – clean up any in-progress check
-        if (sessions.containsKey(player.getUniqueId())) {
+        if (config.isConcurrentCheckPrevention() && sessions.containsKey(player.getUniqueId())) {
             if (config.isDebug()) {
                 log.info("[AMD-DEBUG] Cleaning up existing sign session for "
                         + player.getName() + " before starting new check");
@@ -214,8 +214,7 @@ public final class SignTranslationCheck {
                             return;
                         }
                         // Verify this session is still the active one
-                        SignCheckSession currentSession = sessions.get(session.getPlayerUuid());
-                        if (currentSession != session) return;
+                        if (!isCurrentSession(session.getPlayerUuid(), session)) return;
 
                         runBatch(p, session, resultSink);
                     },
@@ -263,6 +262,15 @@ public final class SignTranslationCheck {
     /** Returns true if a session is currently active for this player. */
     public boolean hasActiveSession(UUID playerUuid) {
         return sessions.containsKey(playerUuid);
+    }
+
+    /**
+     * Returns true if the given session is still the current active session
+     * for its player. Used to detect stale sessions whose timeout or next-batch
+     * task fires after the session was replaced or cleaned up.
+     */
+    private boolean isCurrentSession(UUID playerUuid, SignCheckSession session) {
+        return sessions.get(playerUuid) == session;
     }
 
     // ====================================================================
@@ -388,8 +396,7 @@ public final class SignTranslationCheck {
                 cleanupSession(player.getUniqueId());
                 return;
             }
-            SignCheckSession currentSession = sessions.get(player.getUniqueId());
-            if (currentSession != session) {
+            if (!isCurrentSession(player.getUniqueId(), session)) {
                 // Session was replaced or removed – don't open the editor
                 return;
             }
@@ -428,8 +435,7 @@ public final class SignTranslationCheck {
                            Consumer<DetectionResult> resultSink) {
         // Verify this session is still the active one for this player.
         // If it was replaced (e.g. by a forcecheck), don't act on the stale session.
-        SignCheckSession currentSession = sessions.get(player.getUniqueId());
-        if (currentSession != session) {
+        if (!isCurrentSession(player.getUniqueId(), session)) {
             if (config.isDebug()) {
                 log.info("[AMD-DEBUG] Timeout fired for stale session of "
                         + player.getName() + " – ignoring");
@@ -464,8 +470,7 @@ public final class SignTranslationCheck {
                             return;
                         }
                         // Verify this session is still the active one
-                        SignCheckSession cur = sessions.get(player.getUniqueId());
-                        if (cur != session) return;
+                        if (!isCurrentSession(player.getUniqueId(), session)) return;
 
                         runBatch(player, session, resultSink);
                     },

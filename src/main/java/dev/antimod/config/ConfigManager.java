@@ -153,6 +153,7 @@ public final class ConfigManager {
     private int maxBatchesPerCheck;
     private boolean skipIfBlockOccupied;
     private boolean logRawSignLines;
+    private boolean concurrentCheckPrevention;
 
     // Messages (raw strings with placeholders)
     private Map<String, String> messages = new HashMap<>();
@@ -278,9 +279,10 @@ public final class ConfigManager {
         }
 
         // ── Advanced ─────────────────────────────────────────────────────
-        maxBatchesPerCheck   = cfg.getInt("advanced.max-batches-per-check", 0);
-        skipIfBlockOccupied  = cfg.getBoolean("advanced.skip-if-block-occupied", false);
-        logRawSignLines      = cfg.getBoolean("advanced.log-raw-sign-lines", false);
+        maxBatchesPerCheck        = cfg.getInt("advanced.max-batches-per-check", 0);
+        skipIfBlockOccupied       = cfg.getBoolean("advanced.skip-if-block-occupied", false);
+        logRawSignLines           = cfg.getBoolean("advanced.log-raw-sign-lines", false);
+        concurrentCheckPrevention = cfg.getBoolean("advanced.concurrent-check-prevention", true);
     }
 
     // ====================================================================
@@ -496,6 +498,7 @@ public final class ConfigManager {
     public int getMaxBatchesPerCheck()                      { return maxBatchesPerCheck; }
     public boolean isSkipIfBlockOccupied()                  { return skipIfBlockOccupied; }
     public boolean isLogRawSignLines()                      { return logRawSignLines; }
+    public boolean isConcurrentCheckPrevention()            { return concurrentCheckPrevention; }
 
     public Set<String> getExemptGamemodes()                 { return Collections.unmodifiableSet(exemptGamemodes); }
     public Set<String> getExemptWorlds()                    { return Collections.unmodifiableSet(exemptWorlds); }
