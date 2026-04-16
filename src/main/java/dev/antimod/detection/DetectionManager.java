@@ -238,8 +238,11 @@ public final class DetectionManager {
                           int strikes,
                           Player player) {
         if (banCommand != null && !banCommand.isBlank()) {
+            // Use "perm" as the permanent-ban token; note that different ban
+            // plugins may accept different tokens (e.g. "-1", "permanent").
+            // Adjust your command template if your plugin requires another value.
             String cmd = applyPlaceholders(banCommand, result, strikes)
-                    .replace("{duration}", duration != null ? duration : "perm")
+                    .replace("{duration}", duration != null && !duration.isBlank() ? duration : "perm")
                     .replace("{reason}", reason);
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
             return;

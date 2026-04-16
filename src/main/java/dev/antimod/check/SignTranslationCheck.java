@@ -535,10 +535,10 @@ public final class SignTranslationCheck {
     }
 
     /**
-     * Reopens the inventory the player had open before the sign check began,
-     * if one was saved. Scheduled a short time after the last batch completes
-     * so the client has finished processing the sign editor close before the
-     * inventory open packet arrives.
+     * Schedules reopening the inventory the player had open before the sign
+     * check began, if one was saved. Runs a short time after the last batch
+     * completes so the client has finished processing the sign editor close
+     * before the inventory open packet arrives.
      */
     private void reopenSavedInventory(Player player, SignCheckSession session) {
         Inventory saved = session.getSavedOpenInventory();

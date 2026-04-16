@@ -350,6 +350,8 @@ actions:
       reason: "Using unauthorized mod: {mod} — AntiModDetect"
       # Optional: run this console command INSTEAD of the native ban API.
       # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {duration} {reason}
+      # When duration is blank or "perm" the {duration} placeholder expands to "perm".
+      # Adjust your command if your ban plugin uses a different token (e.g. "-1").
       # Leave blank (or remove) to use the native ban API.
       # Examples:
       #   LiteBans:     "litebans tempban {player} {duration} {reason}"
@@ -395,6 +397,7 @@ actions:
       reason: "Suspicious client detected: {mod} — AntiModDetect"
       # Optional: custom console command instead of native ban API.
       # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {duration} {reason}
+      # When duration is blank the {duration} placeholder expands to "perm".
       command: ""
 
     run-commands:
@@ -492,6 +495,7 @@ strikes:
       reason: "Multiple unauthorized mod detections ({count} strikes) — AntiModDetect"
       # Optional: custom console command instead of native ban API.
       # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {duration} {reason} {count}
+      # When duration is blank the {duration} placeholder expands to "perm".
       command: ""
     kick:
       enabled: false
