@@ -104,6 +104,11 @@ public final class SignCheckSession {
     public void setSavedBlockState(BlockState state)      { this.savedBlockState = state; }
     public BlockState getSavedBlockState()                { return savedBlockState; }
 
+    // ── GUI restoration ──────────────────────────────────────────────────
+
+    public void setSavedOpenInventory(Inventory inv)      { this.savedOpenInventory = inv; }
+    public Inventory getSavedOpenInventory()              { return savedOpenInventory; }
+
     // ── Timeout task ─────────────────────────────────────────────────────
 
     public void setTimeoutTask(BukkitTask task)           { this.timeoutTask = task; }

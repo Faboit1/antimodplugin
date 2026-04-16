@@ -62,9 +62,11 @@ public final class ConfigManager {
             boolean logFile,
             boolean kickEnabled,
             String kickMessage,
+            String kickCommand,
             boolean banEnabled,
             String banDuration,
             String banReason,
+            String banCommand,
             boolean runCommandsEnabled,
             int commandDelayTicks,
             List<String> commands,
@@ -76,8 +78,10 @@ public final class ConfigManager {
             boolean banEnabled,
             String banDuration,
             String banReason,
+            String banCommand,
             boolean kickEnabled,
             String kickMessage,
+            String kickCommand,
             boolean runCommandsEnabled,
             int commandDelayTicks,
             List<String> commands) {}
@@ -354,16 +358,18 @@ public final class ConfigManager {
         boolean logFile      = cfg.getBoolean(basePath + ".log-file", true);
         boolean kickEnabled  = cfg.getBoolean(basePath + ".kick.enabled", false);
         String kickMsg       = cfg.getString(basePath + ".kick.message", "");
+        String kickCmd       = cfg.getString(basePath + ".kick.command", "");
         boolean banEnabled   = cfg.getBoolean(basePath + ".ban.enabled", false);
         String banDuration   = cfg.getString(basePath + ".ban.duration", "7d");
         String banReason     = cfg.getString(basePath + ".ban.reason", "Unauthorized mod");
+        String banCmd        = cfg.getString(basePath + ".ban.command", "");
         boolean runCmds      = cfg.getBoolean(basePath + ".run-commands.enabled", false);
         int cmdDelay         = cfg.getInt(basePath + ".run-commands.delay-ticks", 0);
         List<String> cmds    = cfg.getStringList(basePath + ".run-commands.commands");
         boolean notifyPlayer = cfg.getBoolean(basePath + ".notify-player.enabled", false);
         String notifyMsg     = cfg.getString(basePath + ".notify-player.message", "");
         return new ActionConfig(alertStaff, logConsole, logFile,
-                kickEnabled, kickMsg, banEnabled, banDuration, banReason,
+                kickEnabled, kickMsg, kickCmd, banEnabled, banDuration, banReason, banCmd,
                 runCmds, cmdDelay, cmds, notifyPlayer, notifyMsg);
     }
 
@@ -372,13 +378,15 @@ public final class ConfigManager {
         boolean banEnabled  = cfg.getBoolean(base + ".ban.enabled", true);
         String banDur       = cfg.getString(base + ".ban.duration", "14d");
         String banReason    = cfg.getString(base + ".ban.reason", "Multiple mod detections");
+        String banCmd       = cfg.getString(base + ".ban.command", "");
         boolean kickEnabled = cfg.getBoolean(base + ".kick.enabled", false);
         String kickMsg      = cfg.getString(base + ".kick.message", "");
+        String kickCmd      = cfg.getString(base + ".kick.command", "");
         boolean runCmds     = cfg.getBoolean(base + ".run-commands.enabled", false);
         int cmdDelay        = cfg.getInt(base + ".run-commands.delay-ticks", 0);
         List<String> cmds   = cfg.getStringList(base + ".run-commands.commands");
-        return new StrikeThresholdAction(banEnabled, banDur, banReason,
-                kickEnabled, kickMsg, runCmds, cmdDelay, cmds);
+        return new StrikeThresholdAction(banEnabled, banDur, banReason, banCmd,
+                kickEnabled, kickMsg, kickCmd, runCmds, cmdDelay, cmds);
     }
 
     // ── Small helpers ────────────────────────────────────────────────────
