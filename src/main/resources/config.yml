@@ -240,10 +240,13 @@ sign-detection:
     # must-translate: true   – inverted detection logic
     # min-mc-version: "1.20" – only checked on 1.20+ servers
     #
-    # "gui.yes" translates to "Yes" in vanilla English.
-    # "key.mouse.left" translates to "Left Button" in vanilla.
-    # If a client returns the raw key instead, it is blocking
-    # translation — likely ExploitPreventer or a similar mod.
+    # For must-translate keys, vanilla-responses lists the RAW
+    # (untranslated) values that indicate a BLOCKED translation.
+    # A legitimate client translates "gui.yes" → "Yes" and
+    # "key.mouse.left" → "Left Button" (in English).
+    # If the client returns the raw key string instead of the
+    # translation, it means something is intercepting/blocking —
+    # likely ExploitPreventer or a similar anti-detection mod.
 
     - key: "gui.yes"
       mod-name: "ExploitPreventer / Anti-Detection Mod"

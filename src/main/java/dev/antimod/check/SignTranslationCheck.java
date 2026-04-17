@@ -181,22 +181,24 @@ public final class SignTranslationCheck {
                 continue;
             }
 
-            boolean isVanilla = entry.vanillaResponses().contains(received);
+            boolean matchesRawResponse = entry.vanillaResponses().contains(received);
 
             boolean detected;
             String info;
             if (entry.mustTranslate()) {
                 // Inverted logic: this is a vanilla key that MUST be translated.
-                // If the response matches a "vanilla response" (the raw key or
-                // empty), the client did NOT translate it — indicating an
-                // anti-detection mod like ExploitPreventer is blocking translations.
-                detected = isVanilla;
+                // vanilla-responses lists the RAW (untranslated) values the client
+                // would return if translation is blocked. If the received text
+                // matches one of those raw values, the client did NOT translate
+                // the key — indicating an anti-detection mod like ExploitPreventer.
+                detected = matchesRawResponse;
                 info = "Key '" + entry.key() + "' was not translated (returned '"
                         + received + "'). Expected a translated value. "
                         + "Possible anti-detection mod (ExploitPreventer or similar).";
             } else {
-                // Normal logic: flag if the response is NOT vanilla
-                detected = !isVanilla;
+                // Normal logic: vanilla-responses lists expected vanilla outputs.
+                // Flag if the response is NOT in the expected list.
+                detected = !matchesRawResponse;
                 info = "Key '" + entry.key() + "' resolved to '" + received + "'";
             }
 
