@@ -24,7 +24,9 @@ public final class ConfigManager {
             String key,
             String modName,
             Confidence confidence,
-            List<String> vanillaResponses) {}
+            List<String> vanillaResponses,
+            boolean mustTranslate,
+            String minMcVersion) {}
 
     // ── Brand entry ──────────────────────────────────────────────────────
     public enum MatchType { CONTAINS, EQUALS, STARTS_WITH, ENDS_WITH, REGEX }
@@ -138,6 +140,8 @@ public final class ConfigManager {
     private int signFixedX, signFixedY, signFixedZ;
     private int editorOpenDelayTicks;
     private boolean closeEditorOnTimeout;
+    private int signRetryIntervalTicks;
+    private int signMaxRetries;
 
     // Brand / channel detection
     private boolean brandDetectionEnabled;
@@ -183,7 +187,7 @@ public final class ConfigManager {
         prefix                  = cfg.getString("general.prefix", "&8[&6AntiModDetect&8] ");
         bypassPermission        = cfg.getString("general.bypass-permission", "antimoddetect.bypass");
         checkOnJoin             = cfg.getBoolean("general.check-on-join", true);
-        joinCheckDelayTicks     = cfg.getInt("general.join-check-delay-ticks", 60);
+        joinCheckDelayTicks     = cfg.getInt("general.join-check-delay-ticks", 1);
         checkTimeoutTicks       = cfg.getInt("general.check-timeout-ticks", 100);
         batchDelayTicks         = cfg.getInt("general.batch-delay-ticks", 20);
         blockRestoreDelayTicks  = cfg.getInt("general.block-restore-delay-ticks", 5);
@@ -198,6 +202,8 @@ public final class ConfigManager {
             signUseFrontSide        = sd.getBoolean("use-front-side", true);
             editorOpenDelayTicks    = sd.getInt("editor-open-delay-ticks", 2);
             closeEditorOnTimeout    = sd.getBoolean("close-editor-on-timeout", true);
+            signRetryIntervalTicks  = sd.getInt("retry-interval-ticks", 10);
+            signMaxRetries          = sd.getInt("max-retries", 30);
 
             ConfigurationSection auto = sd.getConfigurationSection("auto-placement");
             if (auto != null) {
@@ -219,6 +225,8 @@ public final class ConfigManager {
             signDetectionEnabled = true;
             editorOpenDelayTicks = 2;
             closeEditorOnTimeout = true;
+            signRetryIntervalTicks = 10;
+            signMaxRetries = 30;
         }
 
         // Parse translation key list
@@ -305,7 +313,9 @@ public final class ConfigManager {
             if (key.isBlank() || modName.isBlank()) continue;
             Confidence conf = safeConf(confStr);
             List<String> vr = toStringList(map.get("vanilla-responses"));
-            result.add(new TranslationKeyEntry(key, modName, conf, vr));
+            boolean mustTranslate = Boolean.parseBoolean(str(map, "must-translate"));
+            String minMcVersion = str(map, "min-mc-version");
+            result.add(new TranslationKeyEntry(key, modName, conf, vr, mustTranslate, minMcVersion));
         }
         return result;
     }
@@ -396,6 +406,40 @@ public final class ConfigManager {
         return v == null ? "" : v.toString().trim();
     }
 
+    /**
+     * Checks whether the server's Minecraft version meets the given minimum.
+     * Version strings like "1.20", "1.21.1" are compared numerically.
+     *
+     * @param minVersion minimum version string (e.g. "1.20")
+     * @return true if the server version is at or above the minimum
+     */
+    public boolean meetsMinVersion(String minVersion) {
+        if (minVersion == null || minVersion.isBlank()) return true;
+        try {
+            String serverVersion = org.bukkit.Bukkit.getMinecraftVersion();
+            return compareVersions(serverVersion, minVersion) >= 0;
+        } catch (Exception e) {
+            return true; // if we can't determine, allow the check
+        }
+    }
+
+    private static int compareVersions(String v1, String v2) {
+        String[] parts1 = v1.split("\\.");
+        String[] parts2 = v2.split("\\.");
+        int len = Math.max(parts1.length, parts2.length);
+        for (int i = 0; i < len; i++) {
+            int p1 = i < parts1.length ? safeParseInt(parts1[i]) : 0;
+            int p2 = i < parts2.length ? safeParseInt(parts2[i]) : 0;
+            if (p1 != p2) return Integer.compare(p1, p2);
+        }
+        return 0;
+    }
+
+    private static int safeParseInt(String s) {
+        try { return Integer.parseInt(s.trim()); }
+        catch (NumberFormatException e) { return 0; }
+    }
+
     private static List<String> toStringList(Object obj) {
         if (obj instanceof List<?> list) {
             List<String> out = new ArrayList<>();
@@ -480,6 +524,8 @@ public final class ConfigManager {
     public int getSignFixedZ()                              { return signFixedZ; }
     public int getEditorOpenDelayTicks()                    { return editorOpenDelayTicks; }
     public boolean isCloseEditorOnTimeout()                 { return closeEditorOnTimeout; }
+    public int getSignRetryIntervalTicks()                  { return signRetryIntervalTicks; }
+    public int getSignMaxRetries()                          { return signMaxRetries; }
 
     public List<TranslationKeyEntry> getTranslationKeys()   { return Collections.unmodifiableList(translationKeys); }
 

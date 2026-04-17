@@ -158,6 +158,8 @@ public final class AlertManager {
 
     public String applyPlaceholders(String template, DetectionResult result) {
         String ip = config.isLogIp() ? result.getPlayerIp() : "[hidden]";
+        String time = new java.text.SimpleDateFormat(config.getLogTimestampFormat())
+                .format(java.util.Date.from(result.getTimestamp()));
         return template
                 .replace("{player}",     result.getPlayerName())
                 .replace("{uuid}",       result.getPlayerUuid().toString())
@@ -165,6 +167,8 @@ public final class AlertManager {
                 .replace("{check-type}", result.getCheckType().name())
                 .replace("{confidence}", result.getConfidence().name())
                 .replace("{ip}",         ip)
+                .replace("{info}",       result.getAdditionalInfo())
+                .replace("{time}",       time)
                 .replace("{prefix}",     config.getPrefix());
     }
 
