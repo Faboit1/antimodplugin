@@ -107,11 +107,15 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        signCheck.cleanupSession(player.getUniqueId());
-        detectionManager.onPlayerLeave(player.getUniqueId());
+        UUID uuid = player.getUniqueId();
+        signCheck.cleanupSession(uuid);
+        detectionManager.onPlayerLeave(uuid);
+        // Clear the recheck cooldown so the player is always re-checked on their
+        // next join (e.g. after being kicked for an illegal mod).
+        lastCheckTime.remove(uuid);
 
         if (config.isStrikeResetOnDisconnect()) {
-            detectionManager.resetPlayer(player.getUniqueId());
+            detectionManager.resetPlayer(uuid);
         }
     }
 
