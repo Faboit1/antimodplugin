@@ -14,6 +14,8 @@ import org.bukkit.block.Sign;
 import org.bukkit.block.sign.Side;
 import org.bukkit.block.sign.SignSide;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.*;
@@ -135,6 +137,15 @@ public final class SignTranslationCheck {
                 player.getUniqueId(), player.getName(), ip, keys);
         sessions.put(player.getUniqueId(), session);
 
+        // Save the inventory the player currently has open so it can be
+        // restored after all sign batches complete.  The player's own
+        // crafting/survival inventory (InventoryType.CRAFTING) is the
+        // default "nothing open" state and does not need to be restored.
+        InventoryType openType = player.getOpenInventory().getType();
+        if (openType != InventoryType.CRAFTING && openType != InventoryType.PLAYER) {
+            session.setSavedOpenInventory(player.getOpenInventory().getTopInventory());
+        }
+
         if (config.isDebug()) {
             log.info("[AMD-DEBUG] Starting sign check for " + player.getName()
                     + " – " + keys.size() + " keys in "
@@ -224,6 +235,7 @@ public final class SignTranslationCheck {
             // All batches done
             session.markCompleted();
             sessions.remove(player.getUniqueId());
+            reopenSavedInventory(player, session);
         }
 
         return true; // consumed – caller should cancel the SignChangeEvent
@@ -491,6 +503,7 @@ public final class SignTranslationCheck {
         } else {
             session.markCompleted();
             sessions.remove(player.getUniqueId());
+            reopenSavedInventory(player, session);
         }
     }
 
@@ -519,6 +532,28 @@ public final class SignTranslationCheck {
         if (config.isDebug()) {
             log.info("[AMD-DEBUG] Force-closed sign editor for " + player.getName());
         }
+    }
+
+    /**
+     * Schedules reopening the inventory the player had open before the sign
+     * check began, if one was saved. Runs a short time after the last batch
+     * completes so the client has finished processing the sign editor close
+     * before the inventory open packet arrives.
+     */
+    private void reopenSavedInventory(Player player, SignCheckSession session) {
+        Inventory saved = session.getSavedOpenInventory();
+        if (saved == null || !player.isOnline()) return;
+
+        // Delay slightly so the sign-editor-close and block-restore packets
+        // are processed by the client first.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                player.openInventory(saved);
+                if (config.isDebug()) {
+                    log.info("[AMD-DEBUG] Restored open inventory for " + player.getName());
+                }
+            }
+        }, config.getBlockRestoreDelayTicks() + 1L);
     }
 
     // ====================================================================

@@ -337,11 +337,27 @@ actions:
         &7Please remove it and rejoin.
         &r
         &7If this is a mistake, contact staff.
+      # Optional: run this console command INSTEAD of the native kick API.
+      # Useful for ban-plugin integrations (LiteBans, AdvancedBan, etc.).
+      # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {message}
+      # Leave blank (or remove) to use the native kick API.
+      # Example:  command: "kick {player} {message}"
+      command: ""
 
     ban:
       enabled: false
       duration: "14d"
       reason: "Using unauthorized mod: {mod} — AntiModDetect"
+      # Optional: run this console command INSTEAD of the native ban API.
+      # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {duration} {reason}
+      # When duration is blank or "perm" the {duration} placeholder expands to "perm".
+      # Adjust your command if your ban plugin uses a different token (e.g. "-1").
+      # Leave blank (or remove) to use the native ban API.
+      # Examples:
+      #   LiteBans:     "litebans tempban {player} {duration} {reason}"
+      #   AdvancedBan:  "tempban {player} {duration} {reason}"
+      #   EssentialsX:  "tempban {player} {duration} {reason}"
+      command: ""
 
     run-commands:
       enabled: false
@@ -371,11 +387,18 @@ actions:
         &7This may be a false positive.
         &r
         &7Contact staff if you believe this is wrong.
+      # Optional: custom console command instead of native kick API.
+      # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {message}
+      command: ""
 
     ban:
       enabled: false
       duration: "7d"
       reason: "Suspicious client detected: {mod} — AntiModDetect"
+      # Optional: custom console command instead of native ban API.
+      # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {duration} {reason}
+      # When duration is blank the {duration} placeholder expands to "perm".
+      command: ""
 
     run-commands:
       enabled: false
@@ -470,11 +493,18 @@ strikes:
       enabled: true
       duration: "14d"
       reason: "Multiple unauthorized mod detections ({count} strikes) — AntiModDetect"
+      # Optional: custom console command instead of native ban API.
+      # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {duration} {reason} {count}
+      # When duration is blank the {duration} placeholder expands to "perm".
+      command: ""
     kick:
       enabled: false
       message: |-
         &c&lToo many mod detections.
         &7You have been removed from the server.
+      # Optional: custom console command instead of native kick API.
+      # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {message} {count}
+      command: ""
     run-commands:
       enabled: false
       delay-ticks: 0

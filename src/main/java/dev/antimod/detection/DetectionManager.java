@@ -105,9 +105,7 @@ public final class DetectionManager {
             Player player = Bukkit.getPlayer(result.getPlayerUuid());
             if (player != null && player.isOnline()) {
                 String msg = applyPlaceholders(action.kickMessage(), result, strikes);
-                Component kickMsg = LegacyComponentSerializer.legacyAmpersand()
-                        .deserialize(msg);
-                player.kick(kickMsg);
+                applyKick(player, msg, action.kickCommand(), result, strikes);
             }
         }
 
@@ -117,6 +115,9 @@ public final class DetectionManager {
             applyBan(result.getPlayerName(),
                     applyPlaceholders(action.banReason(), result, strikes),
                     action.banDuration(),
+                    action.banCommand(),
+                    result,
+                    strikes,
                     player);
         }
 
@@ -168,13 +169,15 @@ public final class DetectionManager {
                     applyPlaceholders(ta.banReason(), result, currentStrikes)
                             .replace("{count}", String.valueOf(currentStrikes)),
                     ta.banDuration(),
+                    ta.banCommand(),
+                    result,
+                    currentStrikes,
                     player);
         }
 
         if (ta.kickEnabled() && player != null && player.isOnline()) {
-            Component msg = LegacyComponentSerializer.legacyAmpersand()
-                    .deserialize(ta.kickMessage().replace("{count}", String.valueOf(currentStrikes)));
-            player.kick(msg);
+            String msg = ta.kickMessage().replace("{count}", String.valueOf(currentStrikes));
+            applyKick(player, msg, ta.kickCommand(), result, currentStrikes);
         }
 
         if (ta.runCommandsEnabled() && !ta.commands().isEmpty()) {
@@ -187,18 +190,71 @@ public final class DetectionManager {
     //  Helpers
     // ====================================================================
 
-    private void applyBan(String playerName, String reason, String duration, Player player) {
-        // Use the Paper PlayerProfile-based BanList for typed, temp-ban support.
-        // Falls back to a console /ban command if the profile API is unavailable.
+    /**
+     * Kicks a player using either a custom console command or the native API.
+     *
+     * <p>If {@code kickCommand} is non-blank it is dispatched as a console
+     * command (useful for ban-plugin integrations such as LiteBans or
+     * AdvancedBan). Placeholders: {@code {player}}, {@code {uuid}},
+     * {@code {mod}}, {@code {check-type}}, {@code {confidence}},
+     * {@code {count}}, and {@code {message}} (the resolved kick message).
+     *
+     * <p>If {@code kickCommand} is blank the player is kicked via the Paper
+     * API instead.
+     */
+    private void applyKick(Player player,
+                           String resolvedMessage,
+                           String kickCommand,
+                           DetectionResult result,
+                           int strikes) {
+        if (kickCommand != null && !kickCommand.isBlank()) {
+            String cmd = applyPlaceholders(kickCommand, result, strikes)
+                    .replace("{message}", resolvedMessage);
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
+        } else {
+            Component kickMsg = LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize(resolvedMessage);
+            player.kick(kickMsg);
+        }
+    }
+
+    /**
+     * Bans a player using either a custom console command or the native API.
+     *
+     * <p>If {@code banCommand} is non-blank it is dispatched as a console
+     * command. Placeholders: {@code {player}}, {@code {uuid}}, {@code {mod}},
+     * {@code {check-type}}, {@code {confidence}}, {@code {count}},
+     * {@code {duration}}, and {@code {reason}}.
+     *
+     * <p>If {@code banCommand} is blank the Paper {@link BanList} API is used,
+     * falling back to a plain {@code /ban} console command if the profile API
+     * is unavailable.
+     */
+    private void applyBan(String playerName,
+                          String reason,
+                          String duration,
+                          String banCommand,
+                          DetectionResult result,
+                          int strikes,
+                          Player player) {
+        if (banCommand != null && !banCommand.isBlank()) {
+            // Use "perm" as the permanent-ban token; note that different ban
+            // plugins may accept different tokens (e.g. "-1", "permanent").
+            // Adjust your command template if your plugin requires another value.
+            String cmd = applyPlaceholders(banCommand, result, strikes)
+                    .replace("{duration}", duration != null && !duration.isBlank() ? duration : "perm")
+                    .replace("{reason}", reason);
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
+            return;
+        }
+
+        // Native ban API (Paper BanList with fallback)
         try {
             java.util.Date expiry = parseDuration(duration);
             org.bukkit.profile.PlayerProfile profile;
             if (player != null) {
                 profile = player.getPlayerProfile();
             } else {
-                // Create a profile from the known UUID so the ban matches the player
-                // when they reconnect. UUID is resolved from the DetectionResult before
-                // this method is called.
                 @SuppressWarnings("deprecation")
                 org.bukkit.OfflinePlayer offline = Bukkit.getOfflinePlayer(playerName);
                 UUID knownUuid = offline.hasPlayedBefore()
