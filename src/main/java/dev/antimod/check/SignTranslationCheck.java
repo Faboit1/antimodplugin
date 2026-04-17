@@ -14,8 +14,6 @@ import org.bukkit.block.Sign;
 import org.bukkit.block.sign.Side;
 import org.bukkit.block.sign.SignSide;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryType;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.*;
@@ -137,15 +135,6 @@ public final class SignTranslationCheck {
                 player.getUniqueId(), player.getName(), ip, keys);
         sessions.put(player.getUniqueId(), session);
 
-        // Save the inventory the player currently has open so it can be
-        // restored after all sign batches complete.  The player's own
-        // crafting/survival inventory (InventoryType.CRAFTING) is the
-        // default "nothing open" state and does not need to be restored.
-        InventoryType openType = player.getOpenInventory().getType();
-        if (openType != InventoryType.CRAFTING && openType != InventoryType.PLAYER) {
-            session.setSavedOpenInventory(player.getOpenInventory().getTopInventory());
-        }
-
         if (config.isDebug()) {
             log.info("[AMD-DEBUG] Starting sign check for " + player.getName()
                     + " – " + keys.size() + " keys in "
@@ -186,22 +175,49 @@ public final class SignTranslationCheck {
             ConfigManager.TranslationKeyEntry entry = batch.get(i);
             String received = PlainTextComponentSerializer.plainText().serialize(lines[i]);
 
-            boolean isVanilla = entry.vanillaResponses().contains(received);
-            if (!isVanilla) {
-                // Non-vanilla response: the client resolved the translation key
+            // Skip version-gated entries if the server doesn't meet the minimum
+            if (!entry.minMcVersion().isBlank()
+                    && !config.meetsMinVersion(entry.minMcVersion())) {
+                continue;
+            }
+
+            boolean matchesRawResponse = entry.vanillaResponses().contains(received);
+
+            boolean detected;
+            String info;
+            if (entry.mustTranslate()) {
+                // Inverted logic: this is a vanilla key that MUST be translated.
+                // vanilla-responses lists the RAW (untranslated) values the client
+                // would return if translation is blocked. If the received text
+                // matches one of those raw values, the client did NOT translate
+                // the key — indicating an anti-detection mod like ExploitPreventer.
+                detected = matchesRawResponse;
+                info = "Key '" + entry.key() + "' was not translated (returned '"
+                        + received + "'). Expected a translated value. "
+                        + "Possible anti-detection mod (ExploitPreventer or similar).";
+            } else {
+                // Normal logic: vanilla-responses lists expected vanilla outputs.
+                // Flag if the response is NOT in the expected list.
+                detected = !matchesRawResponse;
+                info = "Key '" + entry.key() + "' resolved to '" + received + "'";
+            }
+
+            if (detected) {
                 DetectionResult result = new DetectionResult(
                         session.getPlayerUuid(),
                         session.getPlayerName(),
                         entry.modName(),
                         entry.confidence(),
                         DetectionResult.CheckType.SIGN_TRANSLATION,
-                        session.getPlayerIp());
+                        session.getPlayerIp(),
+                        info);
 
                 if (config.isDebug()) {
                     log.info("[AMD-DEBUG] DETECTION for " + player.getName()
                             + " mod=" + entry.modName()
                             + " key=" + entry.key()
-                            + " received='" + received + "'");
+                            + " received='" + received + "'"
+                            + (entry.mustTranslate() ? " (must-translate check)" : ""));
                 }
 
                 if (!config.isDeduplicatePerSession()
@@ -210,6 +226,9 @@ public final class SignTranslationCheck {
                 }
             }
         }
+
+        // Response received — reset retry counter for next batch
+        session.resetRetryCount();
 
         // Restore the sign block
         restoreBlock(session);
@@ -235,7 +254,6 @@ public final class SignTranslationCheck {
             // All batches done
             session.markCompleted();
             sessions.remove(player.getUniqueId());
-            reopenSavedInventory(player, session);
         }
 
         return true; // consumed – caller should cancel the SignChangeEvent
@@ -432,33 +450,34 @@ public final class SignTranslationCheck {
             // as soon as the editor closes, so this is instant.
             forceCloseSignEditor(player, session);
 
-            // Schedule a short fallback timeout in case the client does not
-            // respond to the force-close (e.g. high-latency or non-standard clients).
+            // Schedule a short fallback timeout. During the retry phase,
+            // the timeout fires at the retry-interval so we can re-send the
+            // sign quickly. Once retries are exhausted, the final timeout uses
+            // the configured check-timeout-ticks.
+            int timeoutTicks = session.getRetryCount() < config.getSignMaxRetries()
+                    ? config.getSignRetryIntervalTicks()
+                    : config.getCheckTimeoutTicks();
             session.setTimeoutTask(
                     Bukkit.getScheduler().runTaskLater(plugin,
                             () -> onTimeout(player, session, resultSink),
-                            config.getCheckTimeoutTicks()));
+                            timeoutTicks));
         }, openDelay);
     }
 
     /**
      * Called when the client does not respond within the timeout window.
      *
-     * <p>This can happen when:
-     * <ul>
-     *   <li>The player is on a hack client that suppresses the sign editor.</li>
-     *   <li>The player has high latency.</li>
-     *   <li>The player disconnected between the batch start and the timeout.</li>
-     * </ul>
+     * <p>If retries are available, the sign is restored and re-sent to
+     * the client on the next tick. This "spams" the sign open until the
+     * client responds (e.g. once it finishes loading terrain).
      *
-     * <p>We do NOT trigger a detection here – silence is not proof of guilt.
-     * We simply restore the block and move to the next batch.
+     * <p>If all retries are exhausted, we move to the next batch without
+     * triggering a detection — silence is not proof of guilt.
      */
     private void onTimeout(Player player,
                            SignCheckSession session,
                            Consumer<DetectionResult> resultSink) {
         // Verify this session is still the active one for this player.
-        // If it was replaced (e.g. by a forcecheck), don't act on the stale session.
         if (!isCurrentSession(player.getUniqueId(), session)) {
             if (config.isDebug()) {
                 log.info("[AMD-DEBUG] Timeout fired for stale session of "
@@ -467,25 +486,52 @@ public final class SignTranslationCheck {
             return;
         }
 
-        if (config.isDebug()) {
-            log.info("[AMD-DEBUG] Sign check timed out for "
-                    + player.getName() + " batch=" + session.getCurrentBatchIndex());
-        }
-
-        // The sign editor was already force-closed immediately after it was
-        // opened (see runBatch).  This second call is a safety-net for clients
-        // that may still have the editor open (e.g. if the first close was lost
-        // due to high latency).
-        if (config.isCloseEditorOnTimeout() && player.isOnline()) {
-            forceCloseSignEditor(player, session);
-        }
-
-        restoreBlock(session);
-
         if (!player.isOnline()) {
             cleanupSession(player.getUniqueId());
             return;
         }
+
+        // Check if we can retry (spam the sign again)
+        if (session.getRetryCount() < config.getSignMaxRetries()) {
+            session.incrementRetryCount();
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Sign check retry " + session.getRetryCount()
+                        + "/" + config.getSignMaxRetries()
+                        + " for " + player.getName()
+                        + " batch=" + session.getCurrentBatchIndex());
+            }
+
+            // Force-close any lingering editor, restore the block, and re-run
+            if (config.isCloseEditorOnTimeout()) {
+                forceCloseSignEditor(player, session);
+            }
+            restoreBlock(session);
+
+            // Re-run the same batch immediately (1 tick to let the close packet process)
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline()) {
+                    cleanupSession(player.getUniqueId());
+                    return;
+                }
+                if (!isCurrentSession(player.getUniqueId(), session)) return;
+                runBatch(player, session, resultSink);
+            }, 1L);
+            return;
+        }
+
+        // All retries exhausted – give up on this batch
+        if (config.isDebug()) {
+            log.info("[AMD-DEBUG] Sign check timed out for "
+                    + player.getName() + " batch=" + session.getCurrentBatchIndex()
+                    + " after " + session.getRetryCount() + " retries");
+        }
+
+        if (config.isCloseEditorOnTimeout()) {
+            forceCloseSignEditor(player, session);
+        }
+
+        restoreBlock(session);
+        session.resetRetryCount();
 
         boolean hasMore = session.advanceBatch();
         if (hasMore) {
@@ -494,7 +540,6 @@ public final class SignTranslationCheck {
                             cleanupSession(player.getUniqueId());
                             return;
                         }
-                        // Verify this session is still the active one
                         if (!isCurrentSession(player.getUniqueId(), session)) return;
 
                         runBatch(player, session, resultSink);
@@ -503,7 +548,6 @@ public final class SignTranslationCheck {
         } else {
             session.markCompleted();
             sessions.remove(player.getUniqueId());
-            reopenSavedInventory(player, session);
         }
     }
 
@@ -532,28 +576,6 @@ public final class SignTranslationCheck {
         if (config.isDebug()) {
             log.info("[AMD-DEBUG] Force-closed sign editor for " + player.getName());
         }
-    }
-
-    /**
-     * Schedules reopening the inventory the player had open before the sign
-     * check began, if one was saved. Runs a short time after the last batch
-     * completes so the client has finished processing the sign editor close
-     * before the inventory open packet arrives.
-     */
-    private void reopenSavedInventory(Player player, SignCheckSession session) {
-        Inventory saved = session.getSavedOpenInventory();
-        if (saved == null || !player.isOnline()) return;
-
-        // Delay slightly so the sign-editor-close and block-restore packets
-        // are processed by the client first.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) {
-                player.openInventory(saved);
-                if (config.isDebug()) {
-                    log.info("[AMD-DEBUG] Restored open inventory for " + player.getName());
-                }
-            }
-        }, config.getBlockRestoreDelayTicks() + 1L);
     }
 
     // ====================================================================

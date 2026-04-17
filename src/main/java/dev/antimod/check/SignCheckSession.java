@@ -2,7 +2,6 @@ package dev.antimod.check;
 
 import dev.antimod.config.ConfigManager;
 import org.bukkit.block.BlockState;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.*;
@@ -40,17 +39,13 @@ public final class SignCheckSession {
     /** Saved state of the block that was replaced by the sign. */
     private BlockState savedBlockState;
 
-    // ── GUI restoration ──────────────────────────────────────────────────
-    /**
-     * The top inventory the player had open before the sign check began
-     * (null if they had nothing open, or only their default crafting screen).
-     * Reopened after all batches complete.
-     */
-    private Inventory savedOpenInventory;
-
     // ── Timing / scheduling ──────────────────────────────────────────────
     /** The timeout task for the current batch (cancelled on result). */
     private BukkitTask timeoutTask;
+
+    // ── Retry state ─────────────────────────────────────────────────────
+    /** Number of times the current batch has been retried (sign re-sent). */
+    private int retryCount = 0;
 
     // ── Accumulated detections across all batches ────────────────────────
     private final Set<String> firedDedupeKeys = new HashSet<>();
@@ -104,10 +99,11 @@ public final class SignCheckSession {
     public void setSavedBlockState(BlockState state)      { this.savedBlockState = state; }
     public BlockState getSavedBlockState()                { return savedBlockState; }
 
-    // ── GUI restoration ──────────────────────────────────────────────────
+    // ── Retry ─────────────────────────────────────────────────────────────
 
-    public void setSavedOpenInventory(Inventory inv)      { this.savedOpenInventory = inv; }
-    public Inventory getSavedOpenInventory()              { return savedOpenInventory; }
+    public int getRetryCount()        { return retryCount; }
+    public void incrementRetryCount() { retryCount++; }
+    public void resetRetryCount()     { retryCount = 0; }
 
     // ── Timeout task ─────────────────────────────────────────────────────
 

@@ -49,9 +49,9 @@ general:
   check-on-join: true
 
   # Ticks (20 = 1 s) to wait after join before starting checks.
-  # Increase if you use auth plugins (AuthMe, etc.) that teleport
-  # players after login.
-  join-check-delay-ticks: 60
+  # Set to 1 for instant checking. Increase if you use auth plugins
+  # (AuthMe, etc.) that teleport players after login.
+  join-check-delay-ticks: 1
 
   # Ticks to wait for a sign response before timing out.
   check-timeout-ticks: 100
@@ -126,6 +126,18 @@ sign-detection:
   # sign editor on the player's screen by sending a block change.
   # Set to false only for debugging.
   close-editor-on-timeout: true
+
+  # ── Sign retry settings ──────────────────────────────────────────
+  # Players may be stuck on "Loading terrain" right after joining,
+  # which prevents them from processing sign editor packets.
+  # The plugin will keep re-sending the sign editor at this interval
+  # until the client responds or max-retries is reached.
+
+  # Ticks between each retry attempt (10 ticks = 0.5 seconds).
+  retry-interval-ticks: 10
+
+  # Maximum number of retry attempts per batch before giving up.
+  max-retries: 30
 
   # ---------------------------------------------------------------
   # TRANSLATION KEY LIST  (add as many as you like!)
@@ -217,6 +229,42 @@ sign-detection:
     #   vanilla-responses:
     #     - "key.your.custom.translation.key"
     #     - ""
+
+    # ── Keybind validation (anti-detection mod check) ────────────
+    # These are vanilla Minecraft translation keys that MUST be
+    # translated by any legitimate client. If the response matches
+    # the raw key (i.e. the client did NOT translate it), this
+    # indicates an anti-detection mod like ExploitPreventer is
+    # blocking the sign translation check.
+    #
+    # must-translate: true   – inverted detection logic
+    # min-mc-version: "1.20" – only checked on 1.20+ servers
+    #
+    # For must-translate keys, vanilla-responses lists the RAW
+    # (untranslated) values that indicate a BLOCKED translation.
+    # A legitimate client translates "gui.yes" → "Yes" and
+    # "key.mouse.left" → "Left Button" (in English).
+    # If the client returns the raw key string instead of the
+    # translation, it means something is intercepting/blocking —
+    # likely ExploitPreventer or a similar anti-detection mod.
+
+    - key: "gui.yes"
+      mod-name: "ExploitPreventer / Anti-Detection Mod"
+      confidence: CONFIRMED
+      must-translate: true
+      min-mc-version: "1.20"
+      vanilla-responses:
+        - "gui.yes"
+        - ""
+
+    - key: "key.mouse.left"
+      mod-name: "ExploitPreventer / Anti-Detection Mod"
+      confidence: CONFIRMED
+      must-translate: true
+      min-mc-version: "1.20"
+      vanilla-responses:
+        - "key.mouse.left"
+        - ""
 
 
 # ----------------------------------------------------------------
@@ -429,16 +477,19 @@ actions:
 #   {timestamp}   – formatted timestamp
 #   {count}       – number of detections / strikes
 #   {prefix}      – the general.prefix value
+#   {info}        – additional detection details (key resolved value, etc.)
+#   {time}        – detection timestamp
 messages:
 
   # Sent to players with antimoddetect.notify permission.
-  staff-alert: "{prefix}&e{player} &7flagged &c{mod} &8(&7Check: &f{check-type}&8, &7Confidence: &6{confidence}&8)"
+  # Includes who, what mod, what check type, when, and additional info.
+  staff-alert: "{prefix}&e{player} &7flagged &c{mod} &8(&7Check: &f{check-type}&8, &7Confidence: &6{confidence}&8, &7Time: &f{time}&8) &7Info: &f{info}"
 
   # Written to the server console.
-  console-log: "[AntiModDetect] DETECT | player={player} uuid={uuid} mod={mod} check={check-type} confidence={confidence}"
+  console-log: "[AntiModDetect] DETECT | player={player} uuid={uuid} mod={mod} check={check-type} confidence={confidence} info={info}"
 
   # Written to the log file (logging.file-path).
-  file-log: "[{timestamp}] player={player} uuid={uuid} ip={ip} mod={mod} check={check-type} confidence={confidence}"
+  file-log: "[{timestamp}] player={player} uuid={uuid} ip={ip} mod={mod} check={check-type} confidence={confidence} info={info}"
 
   # Command feedback messages
   no-permission: "{prefix}&cYou do not have permission to do this."

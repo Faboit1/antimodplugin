@@ -25,6 +25,7 @@ public final class DetectionResult {
     private final CheckType checkType;
     private final String playerIp;
     private final Instant timestamp;
+    private final String additionalInfo;
 
     public DetectionResult(UUID playerUuid,
                            String playerName,
@@ -32,13 +33,24 @@ public final class DetectionResult {
                            Confidence confidence,
                            CheckType checkType,
                            String playerIp) {
-        this.playerUuid  = playerUuid;
-        this.playerName  = playerName;
-        this.modName     = modName;
-        this.confidence  = confidence;
-        this.checkType   = checkType;
-        this.playerIp    = playerIp;
-        this.timestamp   = Instant.now();
+        this(playerUuid, playerName, modName, confidence, checkType, playerIp, "");
+    }
+
+    public DetectionResult(UUID playerUuid,
+                           String playerName,
+                           String modName,
+                           Confidence confidence,
+                           CheckType checkType,
+                           String playerIp,
+                           String additionalInfo) {
+        this.playerUuid     = playerUuid;
+        this.playerName     = playerName;
+        this.modName        = modName;
+        this.confidence     = confidence;
+        this.checkType      = checkType;
+        this.playerIp       = playerIp;
+        this.timestamp      = Instant.now();
+        this.additionalInfo = additionalInfo != null ? additionalInfo : "";
     }
 
     public UUID getPlayerUuid()       { return playerUuid; }
@@ -48,6 +60,7 @@ public final class DetectionResult {
     public CheckType getCheckType()   { return checkType; }
     public String getPlayerIp()       { return playerIp; }
     public Instant getTimestamp()     { return timestamp; }
+    public String getAdditionalInfo() { return additionalInfo; }
 
     /** Deduplication key: same player + same mod + same check type. */
     public String dedupeKey() {
