@@ -280,19 +280,50 @@ public final class SignTranslationCheck {
         if (session != null) {
             session.cancelTimeout();
 
-            // Force-close the editor for online players
             Player player = Bukkit.getPlayer(playerUuid);
-            if (player != null && player.isOnline()) {
+            boolean online = player != null && player.isOnline();
+
+            // Force-close the editor only for online players
+            if (online) {
                 forceCloseSignEditor(player, session);
             }
 
-            restoreBlock(session);
+            // Restore the block immediately when the player is offline:
+            // there is no sign-editor close packet to wait for, so a
+            // synchronous restore prevents the sign from lingering in the
+            // world after a disconnect or kick.
+            restoreBlock(session, !online);
         }
     }
 
     /** Returns true if a session is currently active for this player. */
     public boolean hasActiveSession(UUID playerUuid) {
         return sessions.containsKey(playerUuid);
+    }
+
+    /**
+     * Returns true if another active session (not owned by {@code excludeUuid})
+     * has claimed the given block position as its current sign location.
+     *
+     * <p>This prevents two concurrent player sessions from using the same block
+     * for their sign checks. If they shared a block, the second player's sign
+     * placement would overwrite the first player's translatable text, causing
+     * the first player's client to return the second player's translation results
+     * and triggering a false positive.
+     */
+    private boolean isLocationOccupied(int bx, int by, int bz, World world, UUID excludeUuid) {
+        for (Map.Entry<UUID, SignCheckSession> e : sessions.entrySet()) {
+            if (e.getKey().equals(excludeUuid)) continue;
+            Location loc = e.getValue().getSignLocation();
+            if (loc != null
+                    && world.equals(loc.getWorld())
+                    && loc.getBlockX() == bx
+                    && loc.getBlockY() == by
+                    && loc.getBlockZ() == bz) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -416,6 +447,20 @@ public final class SignTranslationCheck {
                     .toList());
         }
 
+        // Immediately hide the temporary sign from every other player in the
+        // same world.  The sign is only meaningful to the player being checked;
+        // all others should continue to see the original block.  This prevents:
+        //   1. Other players seeing a suspicious sign appear and disappear.
+        //   2. Another player's client from caching the sign's TileEntity data
+        //      so that it would be returned as their own sign-change response,
+        //      causing a false positive for that second player.
+        org.bukkit.block.data.BlockData originalBlockData = originalState.getBlockData();
+        for (Player other : placeLoc.getWorld().getPlayers()) {
+            if (!other.getUniqueId().equals(player.getUniqueId())) {
+                other.sendBlockChange(placeLoc, originalBlockData);
+            }
+        }
+
         // Delay between placing/updating the sign and opening the editor.
         // This ensures the sign data packet reaches the client before the
         // open-editor packet, preventing the "empty sign" issue.
@@ -432,12 +477,12 @@ public final class SignTranslationCheck {
                 return;
             }
 
-            // Open the sign editor for the player
-            // Paper API: Player#openSign(Sign, Side) forces the editor open
-            BlockState freshState = targetBlock.getState();
-            if (freshState instanceof Sign freshSign) {
-                player.openSign(freshSign, side);
-            }
+            // Open the sign editor using the state captured at placement time.
+            // Do NOT re-read the block from the world here: by the time this
+            // delayed task fires another session may have placed a different sign
+            // at the same location, which would cause the player's editor to show
+            // that session's translation keys and trigger a false positive.
+            player.openSign(sign, side);
 
             if (config.isDebug()) {
                 log.info("[AMD-DEBUG] Sign editor sent to " + player.getName()
@@ -606,39 +651,76 @@ public final class SignTranslationCheck {
         }
 
         // AUTO mode
-        World world = player.getWorld();
-        int maxY    = world.getMaxHeight() - 1;
-        int eyeY    = player.getEyeLocation().getBlockY();
-        int startY  = eyeY + config.getSignStartYOffset();
-        int endY    = eyeY + config.getSignMaxYOffset();
+        World world  = player.getWorld();
+        UUID uuid    = player.getUniqueId();
+        int maxY     = world.getMaxHeight() - 1;
+        int eyeY     = player.getEyeLocation().getBlockY();
+        int startY   = eyeY + config.getSignStartYOffset();
+        int endY     = eyeY + config.getSignMaxYOffset();
+        int playerX  = player.getLocation().getBlockX();
+        int playerZ  = player.getLocation().getBlockZ();
 
         for (int y = startY; y <= Math.min(endY, maxY); y++) {
-            Location loc = new Location(world,
-                    player.getLocation().getBlockX(),
-                    y,
-                    player.getLocation().getBlockZ());
-            Block block = world.getBlockAt(loc);
-            if (block.getType().isAir() || !block.getType().isSolid()) {
-                return loc;
+            Block block = world.getBlockAt(playerX, y, playerZ);
+            Material type = block.getType();
+            // Skip solid blocks, sign-material blocks (could be a pending restore
+            // from another batch of this player or a different concurrent session),
+            // and blocks already claimed by another active session.
+            if ((type.isAir() || !type.isSolid())
+                    && !isSignMaterial(type)
+                    && !isLocationOccupied(playerX, y, playerZ, world, uuid)) {
+                return new Location(world, playerX, y, playerZ);
             }
         }
 
-        // Fallback: use the configured Y offset above the player
+        // Fallback: use the configured Y offset above the player, but only if
+        // that position is free from sign material and other active sessions.
         int fallbackY = Math.min(eyeY + config.getSignFallbackYOffset(), maxY);
-        return new Location(world,
-                player.getLocation().getBlockX(),
-                fallbackY,
-                player.getLocation().getBlockZ());
+        Material fallbackType = world.getBlockAt(playerX, fallbackY, playerZ).getType();
+        if (isSignMaterial(fallbackType)
+                || isLocationOccupied(playerX, fallbackY, playerZ, world, uuid)) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Fallback sign location ("
+                        + playerX + "," + fallbackY + "," + playerZ
+                        + ") is occupied – cannot find free placement for "
+                        + player.getName());
+            }
+            return null;
+        }
+        return new Location(world, playerX, fallbackY, playerZ);
     }
 
     /** Restores the block that was temporarily replaced by the sign. */
     private void restoreBlock(SignCheckSession session) {
+        restoreBlock(session, false);
+    }
+
+    /**
+     * Restores the block that was temporarily replaced by the sign.
+     *
+     * @param immediate when {@code true} the restore is applied synchronously
+     *                  on the current tick (used when the player is offline and
+     *                  there is no sign-editor close packet to race against).
+     */
+    private void restoreBlock(SignCheckSession session, boolean immediate) {
         Location signLoc = session.getSignLocation();
         if (signLoc == null) return;
 
         BlockState saved = session.getSavedBlockState();
+
+        // Clear location tracking immediately so that other sessions can reuse
+        // this block position as soon as restoration is enqueued.
+        session.setSignLocation(null);
+        session.setSavedBlockState(null);
+
         if (saved == null) {
             signLoc.getBlock().setType(Material.AIR, false);
+        } else if (immediate) {
+            // Synchronous restore: safe when the player is offline and no
+            // sign-editor close packet is in flight.
+            if (isSignMaterial(signLoc.getBlock().getType())) {
+                saved.update(true, false);
+            }
         } else {
             // Schedule the restore a few ticks later to avoid race conditions
             // with the sign editor close packet
@@ -650,9 +732,6 @@ public final class SignTranslationCheck {
                 }
             }, config.getBlockRestoreDelayTicks());
         }
-
-        session.setSignLocation(null);
-        session.setSavedBlockState(null);
     }
 
     // ====================================================================
