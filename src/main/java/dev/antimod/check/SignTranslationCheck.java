@@ -316,7 +316,7 @@ public final class SignTranslationCheck {
             if (e.getKey().equals(excludeUuid)) continue;
             Location loc = e.getValue().getSignLocation();
             if (loc != null
-                    && loc.getWorld() == world
+                    && world.equals(loc.getWorld())
                     && loc.getBlockX() == bx
                     && loc.getBlockY() == by
                     && loc.getBlockZ() == bz) {
