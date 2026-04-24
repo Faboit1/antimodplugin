@@ -381,18 +381,20 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
                 + "  &7join-delay: &e" + config.getJoinCheckDelayTicks() + " ticks");
         send(sender, "  &7sign-detection: " + boolState(config.isSignDetectionEnabled())
                 + "  &7keys: &e" + config.getTranslationKeys().size());
-        boolean plAvailable = Bukkit.getPluginManager().getPlugin("ProtocolLib") != null;
-        send(sender, "  &7ProtocolLib: " + (plAvailable ? "&aYes" : "&cNo (brand/channel via Bukkit Messenger only)"));
+        send(sender, "  &7ProtocolLib: " + (isProtocolLibAvailable() ? "&aYes" : "&cNo (brand/channel via Bukkit Messenger only)"));
+        boolean debugOn = config.isDebug();
         send(sender, "  &7Debug mode: "
-                + (config.isDebug() ? "&aON" : "&cOFF")
+                + (debugOn ? "&aON" : "&cOFF")
                 + (config.isDebugOverrideSet() ? " &8(runtime override)" : " &8(from config)"));
-        send(sender, "  &8Tip: run &e/amd debug on &8to enable verbose logging, then &e/amd forcecheck " + target.getName());
+        if (!debugOn) {
+            send(sender, "  &8Tip: run &e/amd debug on &8to enable verbose logging, then &e/amd forcecheck " + target.getName());
+        }
         send(sender, "&8&m--------------------------------------------------");
         return true;
     }
 
     private boolean cmdStatus(CommandSender sender) {
-        boolean plAvailable = Bukkit.getPluginManager().getPlugin("ProtocolLib") != null;
+        boolean plAvailable = isProtocolLibAvailable();
         String note = plAvailable ? "" : config.getMessage("status-protocollib-note");
 
         send(sender, config.getMessage("status-header"));
@@ -428,13 +430,13 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
         send(sender, "&8&m              &r &6AntiModDetect &8&m              ");
         send(sender, "&e/" + label + " check <player>         &7– run checks (respects cooldown)");
         send(sender, "&e/" + label + " forcecheck <player>    &7– force-run all checks immediately");
-        send(sender, "&e/" + label + " info <player>          &7– diagnostic info for a player");
-        send(sender, "&e/" + label + " debug [on|off]         &7– toggle verbose debug output");
         send(sender, "&e/" + label + " whitelist <add|remove|list> [player]");
         send(sender, "&e/" + label + " strikes <player>");
         send(sender, "&e/" + label + " strikes reset <player>");
         send(sender, "&e/" + label + " reload");
         send(sender, "&e/" + label + " status");
+        send(sender, "&e/" + label + " info <player>          &7– diagnostic snapshot");
+        send(sender, "&e/" + label + " debug [on|off]         &7– toggle verbose debug output");
         send(sender, "&8&m                                          ");
     }
 
@@ -460,7 +462,7 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
                 case "whitelist", "wl" ->
                         filter(List.of("add", "remove", "list"), args[1]);
                 case "debug" ->
-                        filter(List.of("on", "off"), args[1]);
+                        filter(config.isDebug() ? List.of("off") : List.of("on"), args[1]);
                 default -> List.of();
             };
         }
@@ -521,5 +523,9 @@ public final class AntiModCommand implements CommandExecutor, TabCompleter {
         if (online != null) return online.getUniqueId().toString();
         OfflinePlayer offline = Bukkit.getOfflinePlayer(name);
         return offline.hasPlayedBefore() ? offline.getUniqueId().toString() : "";
+    }
+
+    private static boolean isProtocolLibAvailable() {
+        return Bukkit.getPluginManager().getPlugin("ProtocolLib") != null;
     }
 }
