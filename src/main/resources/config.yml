@@ -49,9 +49,18 @@ general:
   check-on-join: true
 
   # Ticks (20 = 1 s) to wait after join before starting checks.
-  # Set to 1 for instant checking. Increase if you use auth plugins
-  # (AuthMe, etc.) that teleport players after login.
-  join-check-delay-ticks: 1
+  #
+  # STANDALONE Paper:    1–5 ticks is fine (instant check).
+  # With Velocity proxy: Use 40–60 ticks (2–3 s) to allow the proxy
+  #   handshake to fully complete before the sign editor is sent.
+  #   If players report the sign editor doesn't open, raise this value.
+  # With AuthMe / login plugins: Increase to at least 100 ticks (5 s)
+  #   so players are fully authenticated before the check starts.
+  #
+  # NOTE: Even with join-check-delay-ticks: 1, the sign check will
+  # automatically retry (see retry-interval-ticks / max-retries below)
+  # until the client responds, so a low value is usually fine.
+  join-check-delay-ticks: 40
 
   # Ticks to wait for a sign response before timing out.
   check-timeout-ticks: 100
@@ -61,9 +70,6 @@ general:
 
   # Ticks after a check completes before restoring the sign block.
   block-restore-delay-ticks: 5
-
-  # Run the sign check asynchronously where possible.
-  async-scheduling: true
 
   # Whether to check players who reconnect within this many seconds
   # after a previous check (0 = always re-check).

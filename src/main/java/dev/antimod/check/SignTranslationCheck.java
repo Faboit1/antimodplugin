@@ -302,6 +302,30 @@ public final class SignTranslationCheck {
     }
 
     /**
+     * Returns a human-readable summary of the current sign-check session
+     * for the given player, or {@code "none"} if no session is active.
+     *
+     * <p>Used by the {@code /amd info} diagnostic command.
+     */
+    public String getSessionState(UUID playerUuid) {
+        SignCheckSession session = sessions.get(playerUuid);
+        if (session == null) return "none";
+        int batch   = session.getCurrentBatchIndex() + 1;
+        int total   = session.getTotalBatches();
+        int retries = session.getRetryCount();
+        String loc  = session.getSignLocation() != null
+                ? session.getSignLocation().getWorld().getName()
+                  + " " + session.getSignLocation().getBlockX()
+                  + "," + session.getSignLocation().getBlockY()
+                  + "," + session.getSignLocation().getBlockZ()
+                : "not placed yet";
+        return "batch " + batch + "/" + total
+                + " retries=" + retries
+                + " loc=[" + loc + "]"
+                + (session.isCompleted() ? " DONE" : "");
+    }
+
+    /**
      * Returns true if another active session (not owned by {@code excludeUuid})
      * has claimed the given block position as its current sign location.
      *

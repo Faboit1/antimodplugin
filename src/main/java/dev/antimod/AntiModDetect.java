@@ -98,7 +98,7 @@ public final class AntiModDetect extends JavaPlugin {
 
         // 9. Register command
         AntiModCommand commandHandler = new AntiModCommand(
-                this, configManager, strikeManager, detectionManager, joinListener);
+                this, configManager, strikeManager, detectionManager, joinListener, signCheck);
         PluginCommand cmd = getCommand("antimoddetect");
         if (cmd != null) {
             cmd.setExecutor(commandHandler);

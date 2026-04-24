@@ -67,6 +67,15 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
+        if (config.isDebug()) {
+            log.info("[AMD-DEBUG] PlayerJoinEvent fired for " + player.getName()
+                    + " (" + player.getUniqueId() + ")"
+                    + " world=" + player.getWorld().getName()
+                    + " gamemode=" + player.getGameMode()
+                    + " addr=" + (player.getAddress() != null
+                            ? player.getAddress().getAddress().getHostAddress() : "null"));
+        }
+
         // Honour the check-on-join config toggle
         if (!config.isCheckOnJoin()) {
             if (config.isDebug()) {
@@ -84,20 +93,34 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
         int cooldownMs = config.getRecheckCooldownSeconds() * 1000;
         if (cooldownMs > 0 && lastCheck != null && (now - lastCheck) < cooldownMs) {
             if (config.isDebug()) {
+                long remainingSecs = ((cooldownMs - (now - lastCheck)) / 1000);
                 log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
-                        + " (recheck cooldown active).");
+                        + " (recheck cooldown active, " + remainingSecs + "s remaining).");
             }
             return;
         }
 
         lastCheckTime.put(player.getUniqueId(), now);
 
+        int delayTicks = config.getJoinCheckDelayTicks();
+        if (config.isDebug()) {
+            log.info("[AMD-DEBUG] Scheduling checks for " + player.getName()
+                    + " in " + delayTicks + " tick(s) ("
+                    + String.format("%.1f", delayTicks / 20.0) + "s)");
+        }
+
         // Schedule checks after the configured delay (allows auth plugins
         // like AuthMe to finish processing before we start)
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline()) return;
+            if (!player.isOnline()) {
+                if (config.isDebug()) {
+                    log.info("[AMD-DEBUG] " + player.getName()
+                            + " went offline before check could start.");
+                }
+                return;
+            }
             triggerChecks(player);
-        }, config.getJoinCheckDelayTicks());
+        }, delayTicks);
     }
 
     // ====================================================================
@@ -265,6 +288,11 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
     /** Returns the last-check timestamp map (for manual checks). */
     public void clearCooldown(UUID playerId) {
         lastCheckTime.remove(playerId);
+    }
+
+    /** Returns the last check timestamp for the given player, or {@code null} if never checked. */
+    public Long getLastCheckTime(UUID playerId) {
+        return lastCheckTime.get(playerId);
     }
 
     /**

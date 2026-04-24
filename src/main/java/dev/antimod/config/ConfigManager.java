@@ -501,7 +501,30 @@ public final class ConfigManager {
     //  Getters
     // ====================================================================
 
-    public boolean isDebug()                                { return debug; }
+    // ── Runtime debug override (set via /amd debug, not persisted) ──────
+    private volatile boolean debugOverride    = false;
+    private volatile boolean debugOverrideSet = false;
+
+    /**
+     * Enables or disables debug mode for the current runtime session
+     * without modifying config.yml.  This override is cleared by
+     * {@link #clearDebugOverride()} or by restarting the server.
+     */
+    public void setDebugOverride(boolean value) {
+        debugOverride    = value;
+        debugOverrideSet = true;
+    }
+
+    /** Removes the runtime debug override so {@link #isDebug()} falls back to config. */
+    public void clearDebugOverride() {
+        debugOverrideSet = false;
+    }
+
+    /** Returns true if a runtime override is currently active. */
+    public boolean isDebugOverrideSet() { return debugOverrideSet; }
+
+    /** Returns true if debug mode is enabled (config value OR runtime override). */
+    public boolean isDebug()                                { return debugOverrideSet ? debugOverride : debug; }
     public String getPrefix()                               { return prefix; }
     public String getBypassPermission()                     { return bypassPermission; }
     public boolean isCheckOnJoin()                          { return checkOnJoin; }
