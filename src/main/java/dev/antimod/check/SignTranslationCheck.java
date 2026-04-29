@@ -472,10 +472,12 @@ public final class SignTranslationCheck {
         //
         // For other players: they should never see the sign at all (not their check).
         // For the checked player: the sign editor is opened via player.openSign(sign, side)
-        // which uses the Sign object captured above (not the live world block), so Paper
-        // sends the sign's tile-entity data directly when opening the editor — the client
-        // does not need to see the block in the world to receive and render the
-        // translatable components inside the editor.
+        // which uses the Sign object captured above (not the live world block), so the
+        // server sends the sign's tile-entity data directly when opening the editor — the
+        // client does not need to see the block in the world to receive and render the
+        // translatable components inside the editor.  This behaviour is consistent across
+        // Paper and Spigot: player.openSign(Sign, Side) always sends a TILE_ENTITY_DATA
+        // packet followed by OPEN_SIGN_EDITOR, regardless of the block's world state.
         org.bukkit.block.data.BlockData originalBlockData = originalState.getBlockData();
         for (Player other : placeLoc.getWorld().getPlayers()) {
             other.sendBlockChange(placeLoc, originalBlockData);

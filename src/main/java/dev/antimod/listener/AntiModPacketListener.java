@@ -222,6 +222,11 @@ public final class AntiModPacketListener {
         Component[] lines = new Component[4];
         try {
             StructureModifier<String> strings = packet.getStrings();
+            if (config.isDebug() && strings.size() != 4) {
+                log.warning("[AMD-DEBUG][PL] UPDATE_SIGN from " + player.getName()
+                        + " had unexpected string field count: " + strings.size()
+                        + " (expected 4) – packet structure may differ from MC 1.21");
+            }
             for (int i = 0; i < 4; i++) {
                 String raw = (i < strings.size()) ? strings.read(i) : "";
                 // The client sends the rendered (post-translation) plain text.
