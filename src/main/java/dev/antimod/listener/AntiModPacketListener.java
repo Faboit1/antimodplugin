@@ -6,8 +6,11 @@ import com.comphenix.protocol.events.*;
 import com.comphenix.protocol.reflect.StructureModifier;
 import dev.antimod.check.ClientBrandCheck;
 import dev.antimod.check.ChannelRegistrationCheck;
+import dev.antimod.check.SignTranslationCheck;
 import dev.antimod.config.ConfigManager;
 import dev.antimod.detection.DetectionResult;
+import net.kyori.adventure.text.Component;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -39,6 +42,7 @@ public final class AntiModPacketListener {
     private final ConfigManager config;
     private final ClientBrandCheck brandCheck;
     private final ChannelRegistrationCheck channelCheck;
+    private final SignTranslationCheck signCheck;
     private final ProtocolManager protocolManager;
     private final Logger log;
 
@@ -49,12 +53,14 @@ public final class AntiModPacketListener {
                                  ConfigManager config,
                                  ClientBrandCheck brandCheck,
                                  ChannelRegistrationCheck channelCheck,
+                                 SignTranslationCheck signCheck,
                                  ProtocolManager protocolManager,
                                  java.util.function.Consumer<DetectionResult> resultSink) {
         this.plugin           = plugin;
         this.config           = config;
         this.brandCheck       = brandCheck;
         this.channelCheck     = channelCheck;
+        this.signCheck        = signCheck;
         this.protocolManager  = protocolManager;
         this.resultSink       = resultSink;
         this.log              = plugin.getLogger();
@@ -74,6 +80,27 @@ public final class AntiModPacketListener {
             public void onPacketReceiving(PacketEvent event) {
                 if (event.isCancelled()) return;
                 handleCustomPayload(event);
+            }
+        });
+
+        // Intercept the sign-update packet (C→S) sent when a sign editor closes.
+        // This is fired by the client whether the editor was closed by the player
+        // manually or force-closed by our AIR block-change trick.
+        // Intercepting here lets us:
+        //  1. Process sign translation detections without waiting for SignChangeEvent.
+        //  2. Cancel the packet so no SignChangeEvent fires and no world modification
+        //     is attempted on the temporary sign block.
+        // This path is only active when ProtocolLib is installed; the plugin falls
+        // back to SignChangeEvent (PlayerJoinListener#onSignChange) without it.
+        protocolManager.addPacketListener(new PacketAdapter(
+                plugin,
+                ListenerPriority.LOWEST,
+                PacketType.Play.Client.UPDATE_SIGN) {
+
+            @Override
+            public void onPacketReceiving(PacketEvent event) {
+                if (event.isCancelled()) return;
+                handleSignUpdate(event);
             }
         });
     }
@@ -133,6 +160,94 @@ public final class AntiModPacketListener {
                 log.warning("[AMD-DEBUG][PL] Error reading custom payload from "
                         + player.getName() + ": " + e.getMessage());
             }
+        }
+    }
+
+    // ====================================================================
+    //  Sign update handler
+    // ====================================================================
+
+    /**
+     * Handles the {@code UPDATE_SIGN} (C→S) packet sent when the client
+     * closes a sign editor (whether by pressing Done or by the force-close
+     * AIR block-change we send).
+     *
+     * <p>If the sign position matches an active sign-translation session for
+     * this player, the 4 rendered lines are forwarded to
+     * {@link SignTranslationCheck#handleSignChange} for detection evaluation.
+     * The packet is then cancelled so that {@link org.bukkit.event.block.SignChangeEvent}
+     * never fires and no world modification is attempted on the temporary sign
+     * block.
+     *
+     * <p>Minecraft 1.21 sign update packet layout (C→S):
+     * <pre>
+     *   BlockPosition  – position of the sign
+     *   boolean        – true = front side, false = back
+     *   String[4]      – the four rendered line strings (plain text)
+     * </pre>
+     */
+    private void handleSignUpdate(PacketEvent event) {
+        Player player = event.getPlayer();
+        if (player == null) return;
+
+        PacketContainer packet = event.getPacket();
+
+        // Read the sign position
+        com.comphenix.protocol.wrappers.BlockPosition pos;
+        try {
+            pos = packet.getBlockPositionModifier().read(0);
+        } catch (Exception e) {
+            if (config.isDebug()) {
+                log.fine("[AMD-DEBUG][PL] Could not read UPDATE_SIGN position from "
+                        + player.getName() + ": " + e.getMessage());
+            }
+            return;
+        }
+
+        Location loc = new Location(player.getWorld(), pos.getX(), pos.getY(), pos.getZ());
+
+        // Only handle packets that belong to an active sign check session
+        if (!signCheck.isTestSign(player, loc)) return;
+
+        if (config.isDebug()) {
+            log.info("[AMD-DEBUG][PL] UPDATE_SIGN intercepted from " + player.getName()
+                    + " at " + pos.getX() + "," + pos.getY() + "," + pos.getZ());
+        }
+
+        // Read the 4 rendered line strings.
+        // In Minecraft 1.21 the lines are individual String fields (not an array).
+        // The boolean "front side" field comes before the strings in the packet;
+        // ProtocolLib's getStrings() returns only the String-typed fields, so
+        // indices 0-3 correspond to lines 1-4.
+        Component[] lines = new Component[4];
+        try {
+            StructureModifier<String> strings = packet.getStrings();
+            if (config.isDebug() && strings.size() != 4) {
+                log.warning("[AMD-DEBUG][PL] UPDATE_SIGN from " + player.getName()
+                        + " had unexpected string field count: " + strings.size()
+                        + " (expected 4) – packet structure may differ from MC 1.21");
+            }
+            for (int i = 0; i < 4; i++) {
+                String raw = (i < strings.size()) ? strings.read(i) : "";
+                // The client sends the rendered (post-translation) plain text.
+                // Wrap as a plain text component so handleSignChange can serialise it.
+                lines[i] = Component.text(raw != null ? raw : "");
+            }
+        } catch (Exception e) {
+            if (config.isDebug()) {
+                log.warning("[AMD-DEBUG][PL] Failed to read UPDATE_SIGN lines from "
+                        + player.getName() + ": "
+                        + e.getClass().getSimpleName() + " – " + e.getMessage());
+            }
+            return;
+        }
+
+        // Forward to sign check logic (same processing path as SignChangeEvent)
+        boolean consumed = signCheck.handleSignChange(player, lines, resultSink);
+
+        if (consumed) {
+            // Prevent SignChangeEvent from firing and prevent world modification.
+            event.setCancelled(true);
         }
     }
 

@@ -83,10 +83,30 @@ public final class SignTranslationCheck {
     /** Active sessions, keyed by player UUID. */
     private final Map<UUID, SignCheckSession> sessions = new ConcurrentHashMap<>();
 
+    /**
+     * When true, ProtocolLib intercepts the {@code UPDATE_SIGN} (C→S) packet
+     * directly, so we never need to retry: the client will respond exactly once
+     * per batch (when it drains its packet queue after loading terrain).
+     * Retrying would only queue extra {@code OPEN_SIGN_EDITOR} packets that fire
+     * all at once when loading completes, causing the editor to flash repeatedly.
+     */
+    private boolean protocolLibMode = false;
+
     public SignTranslationCheck(JavaPlugin plugin, ConfigManager config) {
         this.plugin = plugin;
         this.config = config;
         this.log    = plugin.getLogger();
+    }
+
+    /**
+     * Enables "packet mode": ProtocolLib intercepts the {@code UPDATE_SIGN}
+     * response instead of relying on {@link org.bukkit.event.block.SignChangeEvent}.
+     * In this mode the retry loop is disabled – only one editor packet is sent
+     * per batch, and a single long timeout is used.  Call this once on enable
+     * when ProtocolLib is detected.
+     */
+    public void setProtocolLibMode(boolean enabled) {
+        this.protocolLibMode = enabled;
     }
 
     // ====================================================================
@@ -447,16 +467,25 @@ public final class SignTranslationCheck {
                     .toList());
         }
 
-        // Immediately hide the temporary sign from every other player in the
-        // same world.  The sign is only meaningful to the player being checked;
-        // all others should continue to see the original block.  This prevents:
-        //   1. Other players seeing a suspicious sign appear and disappear.
-        //   2. Another player's client from caching the sign's TileEntity data
-        //      so that it would be returned as their own sign-change response,
-        //      causing a false positive for that second player.
+        // Hide the temporary sign from OTHER players in the world.
+        //
+        // IMPORTANT: do NOT send this block-change to the checked player.
+        // When a client receives a block-change to AIR for a position, it
+        // removes the block entity (sign) from its local level cache.
+        // If we clear the checked player's sign entity BEFORE openSign() is
+        // called, the subsequent OPEN_SIGN_EDITOR packet finds no block entity
+        // at that position (client calls level.getBlockEntity(pos) → null),
+        // the editor never opens, no UPDATE_SIGN is ever sent, and the check
+        // silently fails.  Instead we let the checked player's client retain
+        // the sign entity (placed naturally when the block was set server-side)
+        // so the editor can open and render the translatable components.
+        // The checked player sees the sign for at most editor-open-delay-ticks
+        // (default 2 ticks = 0.1 s) before forceCloseSignEditor() sends AIR
+        // and makes it disappear — effectively invisible in practice.
         org.bukkit.block.data.BlockData originalBlockData = originalState.getBlockData();
+        UUID checkedUuid = player.getUniqueId();
         for (Player other : placeLoc.getWorld().getPlayers()) {
-            if (!other.getUniqueId().equals(player.getUniqueId())) {
+            if (!other.getUniqueId().equals(checkedUuid)) {
                 other.sendBlockChange(placeLoc, originalBlockData);
             }
         }
@@ -495,13 +524,21 @@ public final class SignTranslationCheck {
             // as soon as the editor closes, so this is instant.
             forceCloseSignEditor(player, session);
 
-            // Schedule a short fallback timeout. During the retry phase,
-            // the timeout fires at the retry-interval so we can re-send the
-            // sign quickly. Once retries are exhausted, the final timeout uses
-            // the configured check-timeout-ticks.
-            int timeoutTicks = session.getRetryCount() < config.getSignMaxRetries()
-                    ? config.getSignRetryIntervalTicks()
-                    : config.getCheckTimeoutTicks();
+            // Schedule a fallback timeout.
+            //
+            // Packet mode (ProtocolLib available):
+            //   The UPDATE_SIGN response is intercepted directly, so we never
+            //   retry.  Use the full check-timeout-ticks so the client has time
+            //   to finish loading terrain and drain its packet queue.
+            //
+            // Fallback mode (no ProtocolLib, SignChangeEvent):
+            //   Retry at the configured retry-interval until max-retries is
+            //   reached, then fall back to the full timeout.
+            int timeoutTicks = protocolLibMode
+                    ? config.getCheckTimeoutTicks()
+                    : (session.getRetryCount() < config.getSignMaxRetries()
+                            ? config.getSignRetryIntervalTicks()
+                            : config.getCheckTimeoutTicks());
             session.setTimeoutTask(
                     Bukkit.getScheduler().runTaskLater(plugin,
                             () -> onTimeout(player, session, resultSink),
@@ -512,16 +549,22 @@ public final class SignTranslationCheck {
     /**
      * Called when the client does not respond within the timeout window.
      *
-     * <p>If retries are available, the sign editor is re-opened at the
-     * <em>same</em> block location (the sign is already in the world) and
-     * immediately force-closed again. Keeping the location stable is
-     * critical: a different location per retry would cause
-     * {@link #isTestSign} to never match the client's eventual
-     * {@code SignChangeEvent} (which always targets the original location).
+     * <p>In <em>packet mode</em> (ProtocolLib available): retries are disabled.
+     * The client will respond via UPDATE_SIGN when it eventually drains its
+     * incoming packet queue (e.g. after finishing terrain loading).  Sending
+     * extra OPEN_SIGN_EDITOR packets would only build up a queue of editors
+     * that all fire at once when loading completes, causing visible spam.
+     * Instead we simply move on to the next batch if the timeout elapses
+     * with no response.
      *
-     * <p>If all retries are exhausted, the block is restored and we move
-     * to the next batch without triggering a detection — silence is not
-     * proof of guilt.
+     * <p>In <em>fallback mode</em> (no ProtocolLib, SignChangeEvent): the
+     * sign editor is re-opened at the same block location and immediately
+     * force-closed again. Keeping the location stable is critical: a
+     * different location per retry would cause {@link #isTestSign} to never
+     * match the client's eventual {@code SignChangeEvent} (which always
+     * targets the original location).  If all retries are exhausted, the
+     * block is restored and we move to the next batch without triggering a
+     * detection — silence is not proof of guilt.
      */
     private void onTimeout(Player player,
                            SignCheckSession session,
@@ -540,7 +583,36 @@ public final class SignTranslationCheck {
             return;
         }
 
-        // Check if we can retry (spam the sign again)
+        // ── Packet mode: never retry ─────────────────────────────────────
+        // ProtocolLib intercepts UPDATE_SIGN directly, so the client will
+        // respond on its own when ready.  Queuing more editor packets causes
+        // the "spam" the user reported.  Just skip this batch and move on.
+        if (protocolLibMode) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Sign check timed out (packet mode) for "
+                        + player.getName() + " batch=" + session.getCurrentBatchIndex()
+                        + " – skipping batch (client did not respond in time)");
+            }
+            if (config.isCloseEditorOnTimeout()) {
+                forceCloseSignEditor(player, session);
+            }
+            restoreBlock(session);
+            session.resetRetryCount();
+            boolean hasMore = session.advanceBatch();
+            if (hasMore) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (!player.isOnline()) { cleanupSession(player.getUniqueId()); return; }
+                    if (!isCurrentSession(player.getUniqueId(), session)) return;
+                    runBatch(player, session, resultSink);
+                }, config.getBatchDelayTicks());
+            } else {
+                session.markCompleted();
+                sessions.remove(player.getUniqueId());
+            }
+            return;
+        }
+
+        // ── Fallback mode: retry loop ────────────────────────────────────
         if (session.getRetryCount() < config.getSignMaxRetries()) {
             session.incrementRetryCount();
             if (config.isDebug()) {

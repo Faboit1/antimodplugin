@@ -83,9 +83,15 @@ public final class AntiModDetect extends JavaPlugin {
                 com.comphenix.protocol.ProtocolManager pm =
                         com.comphenix.protocol.ProtocolLibrary.getProtocolManager();
                 new AntiModPacketListener(this, configManager,
-                        brandCheck, channelCheck, pm,
+                        brandCheck, channelCheck, signCheck, pm,
                         detectionManager::handle);
-                getLogger().info("ProtocolLib found – deep packet detection enabled.");
+                // Packet mode: UPDATE_SIGN is intercepted directly, so the sign
+                // check never needs to retry.  One editor packet per batch is sent
+                // and we wait for the client to respond on its own schedule (e.g.
+                // after finishing terrain loading). This eliminates the "spam" of
+                // repeated editor packets that build up in the client's queue.
+                signCheck.setProtocolLibMode(true);
+                getLogger().info("ProtocolLib found – deep packet detection enabled (packet-mode sign check active).");
             } catch (Exception e) {
                 getLogger().warning("ProtocolLib hook failed: " + e.getMessage()
                         + " – falling back to Bukkit Messenger.");
