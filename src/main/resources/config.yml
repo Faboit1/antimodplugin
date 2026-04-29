@@ -243,41 +243,18 @@ sign-detection:
     #     - "key.your.custom.translation.key"
     #     - ""
 
-    # ── Keybind validation (anti-detection mod check) ────────────
-    # These are vanilla Minecraft translation keys that MUST be
-    # translated by any legitimate client. If the response matches
-    # the raw key (i.e. the client did NOT translate it), this
-    # indicates an anti-detection mod like ExploitPreventer is
-    # blocking the sign translation check.
-    #
-    # must-translate: true   – inverted detection logic
-    # min-mc-version: "1.20" – only checked on 1.20+ servers
-    #
-    # For must-translate keys, vanilla-responses lists the RAW
-    # (untranslated) values that indicate a BLOCKED translation.
-    # A legitimate client translates "gui.yes" → "Yes" and
-    # "key.mouse.left" → "Left Button" (in English).
-    # If the client returns the raw key string instead of the
-    # translation, it means something is intercepting/blocking —
-    # likely ExploitPreventer or a similar anti-detection mod.
-
-    - key: "gui.yes"
-      mod-name: "ExploitPreventer / Anti-Detection Mod"
-      confidence: CONFIRMED
-      must-translate: true
-      min-mc-version: "1.20"
-      vanilla-responses:
-        - "gui.yes"
-        - ""
-
-    - key: "key.mouse.left"
-      mod-name: "ExploitPreventer / Anti-Detection Mod"
-      confidence: CONFIRMED
-      must-translate: true
-      min-mc-version: "1.20"
-      vanilla-responses:
-        - "key.mouse.left"
-        - ""
+    # ── Note on anti-detection mod checks (must-translate) ───────
+    # The must-translate technique (checking whether a vanilla key was
+    # translated) is intentionally disabled in the default config.
+    # Because the sign editor is force-closed immediately after it opens,
+    # vanilla clients frequently return an empty string before they have
+    # time to render the translation — matching the "vanilla-responses"
+    # list and triggering false positives on innocent players.
+    # If you want to experiment with this technique, add entries with
+    # must-translate: true and REMOVE the empty string ("") from
+    # vanilla-responses. Only the raw key string (e.g. "gui.yes")
+    # should remain as a vanilla-response so that empty responses do
+    # not cause false flags.
 
 
 # ----------------------------------------------------------------
@@ -403,7 +380,7 @@ actions:
       # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {message}
       # Leave blank (or remove) to use the native kick API.
       # Example:  command: "kick {player} {message}"
-      command: ""
+      command: "kick {player} {message}"
 
     ban:
       enabled: false
@@ -418,7 +395,7 @@ actions:
       #   LiteBans:     "litebans tempban {player} {duration} {reason}"
       #   AdvancedBan:  "tempban {player} {duration} {reason}"
       #   EssentialsX:  "tempban {player} {duration} {reason}"
-      command: ""
+      command: "tempban {player} {duration} {reason}"
 
     run-commands:
       enabled: false
@@ -560,7 +537,7 @@ strikes:
       # Optional: custom console command instead of native ban API.
       # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {duration} {reason} {count}
       # When duration is blank the {duration} placeholder expands to "perm".
-      command: ""
+      command: "tempban {player} {duration} {reason}"
     kick:
       enabled: false
       message: |-
@@ -568,7 +545,7 @@ strikes:
         &7You have been removed from the server.
       # Optional: custom console command instead of native kick API.
       # Placeholders: {player} {uuid} {mod} {check-type} {confidence} {message} {count}
-      command: ""
+      command: "kick {player} {message}"
     run-commands:
       enabled: false
       delay-ticks: 0

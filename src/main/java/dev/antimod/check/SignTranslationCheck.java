@@ -308,11 +308,11 @@ public final class SignTranslationCheck {
                 forceCloseSignEditor(player, session);
             }
 
-            // Restore the block immediately when the player is offline:
-            // there is no sign-editor close packet to wait for, so a
-            // synchronous restore prevents the sign from lingering in the
-            // world after a disconnect or kick.
-            restoreBlock(session, !online);
+            // Restore the block immediately: when cleaning up a session we
+            // do not need to wait for a sign-editor close packet, and a delayed
+            // restore would allow a fast-reconnecting player to see the sign
+            // block in the world before it disappears.
+            restoreBlock(session, true);
         }
     }
 
