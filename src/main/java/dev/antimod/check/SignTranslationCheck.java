@@ -447,18 +447,18 @@ public final class SignTranslationCheck {
                     .toList());
         }
 
-        // Immediately hide the temporary sign from every other player in the
-        // same world.  The sign is only meaningful to the player being checked;
-        // all others should continue to see the original block.  This prevents:
-        //   1. Other players seeing a suspicious sign appear and disappear.
-        //   2. Another player's client from caching the sign's TileEntity data
-        //      so that it would be returned as their own sign-change response,
-        //      causing a false positive for that second player.
+        // Hide the temporary sign from every player in the world, including the
+        // player being checked.  This prevents the sign from flashing visually.
+        //
+        // For other players: they should never see the sign at all (not their check).
+        // For the checked player: the sign editor is opened via player.openSign(sign, side)
+        // which uses the Sign object captured above (not the live world block), so Paper
+        // sends the sign's tile-entity data directly when opening the editor — the client
+        // does not need to see the block in the world to receive and render the
+        // translatable components inside the editor.
         org.bukkit.block.data.BlockData originalBlockData = originalState.getBlockData();
         for (Player other : placeLoc.getWorld().getPlayers()) {
-            if (!other.getUniqueId().equals(player.getUniqueId())) {
-                other.sendBlockChange(placeLoc, originalBlockData);
-            }
+            other.sendBlockChange(placeLoc, originalBlockData);
         }
 
         // Delay between placing/updating the sign and opening the editor.
