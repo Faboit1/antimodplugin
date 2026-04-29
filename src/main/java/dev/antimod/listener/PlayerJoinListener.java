@@ -93,9 +93,15 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
         lastCheckTime.put(player.getUniqueId(), now);
 
         // Schedule checks after the configured delay (allows auth plugins
-        // like AuthMe to finish processing before we start)
+        // like AuthMe to finish processing before we start).
+        // Re-check exemption inside the task: some permission plugins (e.g.
+        // LuckPerms) load permissions asynchronously after PlayerJoinEvent
+        // fires, so a player with the bypass permission might appear non-exempt
+        // at MONITOR priority but will be correctly identified as exempt once
+        // the delayed task runs.
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (!player.isOnline()) return;
+            if (isExempt(player)) return;
             triggerChecks(player);
         }, config.getJoinCheckDelayTicks());
     }
@@ -287,9 +293,11 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
             log.info("[AMD-DEBUG] Force-checking " + player.getName());
         }
 
-        // Schedule checks on the next tick so callers can log first
+        // Schedule checks on the next tick so callers can log first.
+        // Re-check exemption inside the task (same reason as onPlayerJoin).
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (!player.isOnline()) return;
+            if (isExempt(player)) return;
             triggerChecks(player);
         }, 1L);
     }

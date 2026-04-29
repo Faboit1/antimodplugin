@@ -467,20 +467,26 @@ public final class SignTranslationCheck {
                     .toList());
         }
 
-        // Hide the temporary sign from every player in the world, including the
-        // player being checked.  This prevents the sign from flashing visually.
+        // Hide the temporary sign from OTHER players in the world.
         //
-        // For other players: they should never see the sign at all (not their check).
-        // For the checked player: the sign editor is opened via player.openSign(sign, side)
-        // which uses the Sign object captured above (not the live world block), so the
-        // server sends the sign's tile-entity data directly when opening the editor — the
-        // client does not need to see the block in the world to receive and render the
-        // translatable components inside the editor.  This behaviour is consistent across
-        // Paper and Spigot: player.openSign(Sign, Side) always sends a TILE_ENTITY_DATA
-        // packet followed by OPEN_SIGN_EDITOR, regardless of the block's world state.
+        // IMPORTANT: do NOT send this block-change to the checked player.
+        // When a client receives a block-change to AIR for a position, it
+        // removes the block entity (sign) from its local level cache.
+        // If we clear the checked player's sign entity BEFORE openSign() is
+        // called, the subsequent OPEN_SIGN_EDITOR packet finds no block entity
+        // at that position (client calls level.getBlockEntity(pos) → null),
+        // the editor never opens, no UPDATE_SIGN is ever sent, and the check
+        // silently fails.  Instead we let the checked player's client retain
+        // the sign entity (placed naturally when the block was set server-side)
+        // so the editor can open and render the translatable components.
+        // The checked player sees the sign for at most editor-open-delay-ticks
+        // (default 2 ticks = 0.1 s) before forceCloseSignEditor() sends AIR
+        // and makes it disappear — effectively invisible in practice.
         org.bukkit.block.data.BlockData originalBlockData = originalState.getBlockData();
         for (Player other : placeLoc.getWorld().getPlayers()) {
-            other.sendBlockChange(placeLoc, originalBlockData);
+            if (!other.getUniqueId().equals(player.getUniqueId())) {
+                other.sendBlockChange(placeLoc, originalBlockData);
+            }
         }
 
         // Delay between placing/updating the sign and opening the editor.
