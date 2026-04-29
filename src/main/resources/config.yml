@@ -51,10 +51,18 @@ general:
   # Ticks (20 = 1 s) to wait after join before starting checks.
   # Set to 1 for instant checking. Increase if you use auth plugins
   # (AuthMe, etc.) that teleport players after login.
+  # With ProtocolLib installed (recommended), starting at tick 1 means
+  # the sign editor opens while the "Loading terrain…" screen is still
+  # visible, so the player never sees it flash.
   join-check-delay-ticks: 1
 
   # Ticks to wait for a sign response before timing out.
-  check-timeout-ticks: 100
+  # With ProtocolLib: only ONE sign editor packet is sent per batch;
+  # this timeout is the total window the client has to respond (it will
+  # respond on its own once it finishes loading terrain).  300 ticks
+  # (15 s) covers all but the most extreme loading scenarios.
+  # Without ProtocolLib: the retry system fires within this window.
+  check-timeout-ticks: 300
 
   # Ticks to wait between successive sign batches.
   batch-delay-ticks: 20
@@ -127,11 +135,16 @@ sign-detection:
   # Set to false only for debugging.
   close-editor-on-timeout: true
 
-  # ── Sign retry settings ──────────────────────────────────────────
-  # Players may be stuck on "Loading terrain" right after joining,
-  # which prevents them from processing sign editor packets.
-  # The plugin will keep re-sending the sign editor at this interval
-  # until the client responds or max-retries is reached.
+  # ── Sign retry settings (fallback mode only, without ProtocolLib) ──
+  # When ProtocolLib is installed the retry loop is completely disabled:
+  # only ONE sign editor packet is sent per batch and we wait up to
+  # check-timeout-ticks for the client to respond.  This prevents the
+  # "spamming" effect where queued retry packets all fire at once when
+  # the player finishes loading terrain.
+  #
+  # Without ProtocolLib (SignChangeEvent fallback), these settings apply:
+  # the plugin re-sends the sign editor at this interval until the client
+  # responds or max-retries is reached.
 
   # Ticks between each retry attempt (10 ticks = 0.5 seconds).
   retry-interval-ticks: 10
