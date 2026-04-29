@@ -512,12 +512,16 @@ public final class SignTranslationCheck {
     /**
      * Called when the client does not respond within the timeout window.
      *
-     * <p>If retries are available, the sign is restored and re-sent to
-     * the client on the next tick. This "spams" the sign open until the
-     * client responds (e.g. once it finishes loading terrain).
+     * <p>If retries are available, the sign editor is re-opened at the
+     * <em>same</em> block location (the sign is already in the world) and
+     * immediately force-closed again. Keeping the location stable is
+     * critical: a different location per retry would cause
+     * {@link #isTestSign} to never match the client's eventual
+     * {@code SignChangeEvent} (which always targets the original location).
      *
-     * <p>If all retries are exhausted, we move to the next batch without
-     * triggering a detection — silence is not proof of guilt.
+     * <p>If all retries are exhausted, the block is restored and we move
+     * to the next batch without triggering a detection — silence is not
+     * proof of guilt.
      */
     private void onTimeout(Player player,
                            SignCheckSession session,
@@ -546,7 +550,33 @@ public final class SignTranslationCheck {
                         + " batch=" + session.getCurrentBatchIndex());
             }
 
-            // Force-close any lingering editor, restore the block, and re-run
+            // Re-open the sign editor at the existing location rather than
+            // restoring and re-placing the sign at a (potentially different)
+            // location.  Calling restoreBlock() here would clear
+            // session.signLocation; the subsequent runBatch() would then pick
+            // a different Y position (due to the isSignMaterial guard in
+            // resolveSignLocation), causing isTestSign() to never match the
+            // client's SignChangeEvent which targets the original location.
+            // Keeping signLocation stable throughout all retries ensures that
+            // any late client response is still recognised correctly.
+            Location retryLoc = session.getSignLocation();
+            if (retryLoc != null) {
+                BlockState bs = retryLoc.getBlock().getState();
+                if (bs instanceof Sign retrySign) {
+                    Side retrySide = config.isSignUseFrontSide() ? Side.FRONT : Side.BACK;
+                    player.openSign(retrySign, retrySide);
+                    forceCloseSignEditor(player, session);
+                    int nextTimeout = session.getRetryCount() < config.getSignMaxRetries()
+                            ? config.getSignRetryIntervalTicks()
+                            : config.getCheckTimeoutTicks();
+                    session.setTimeoutTask(Bukkit.getScheduler().runTaskLater(plugin,
+                            () -> onTimeout(player, session, resultSink), nextTimeout));
+                    return;
+                }
+            }
+
+            // Fallback: sign location was lost or block is no longer a sign –
+            // fall through to the original restore-and-rerun path.
             if (config.isCloseEditorOnTimeout()) {
                 forceCloseSignEditor(player, session);
             }
