@@ -483,8 +483,9 @@ public final class SignTranslationCheck {
         // (default 2 ticks = 0.1 s) before forceCloseSignEditor() sends AIR
         // and makes it disappear — effectively invisible in practice.
         org.bukkit.block.data.BlockData originalBlockData = originalState.getBlockData();
+        UUID checkedUuid = player.getUniqueId();
         for (Player other : placeLoc.getWorld().getPlayers()) {
-            if (!other.getUniqueId().equals(player.getUniqueId())) {
+            if (!other.getUniqueId().equals(checkedUuid)) {
                 other.sendBlockChange(placeLoc, originalBlockData);
             }
         }

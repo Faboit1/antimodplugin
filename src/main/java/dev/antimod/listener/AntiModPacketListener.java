@@ -236,7 +236,8 @@ public final class AntiModPacketListener {
         } catch (Exception e) {
             if (config.isDebug()) {
                 log.warning("[AMD-DEBUG][PL] Failed to read UPDATE_SIGN lines from "
-                        + player.getName() + ": " + e.getMessage());
+                        + player.getName() + ": "
+                        + e.getClass().getSimpleName() + " – " + e.getMessage());
             }
             return;
         }
