@@ -265,6 +265,15 @@ public final class PlayerJoinListener implements Listener, PluginMessageListener
             return true;
         }
 
+        // Skip Bedrock/Geyser players – their usernames begin with '.'
+        if (player.getName().startsWith(".")) {
+            if (config.isDebug()) {
+                log.info("[AMD-DEBUG] Skipping checks for " + player.getName()
+                        + " (Bedrock/Geyser player).");
+            }
+            return true;
+        }
+
         return false;
     }
 
